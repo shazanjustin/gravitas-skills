@@ -1,0 +1,13 @@
+# Metricool API credentials (created by 'setup' command)
+# Keep this out of version control — it contains your API token!
+.env
+
+# Metricool swagger cache
+metricool_swagger.json
+
+# Exported analytics files
+metricool_export_*.json
+
+# Python bytecode
+__pycache__/
+*.pyc

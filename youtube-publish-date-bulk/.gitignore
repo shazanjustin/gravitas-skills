@@ -1,0 +1,6 @@
+.env
+cookies.txt
+*.cookies.txt
+published_dates_output.txt
+published_dates_failures.txt
+__pycache__/

@@ -1,0 +1,20 @@
+# API credentials (created by 'setup' command)
+.env
+
+# Swagger cache
+metricool_swagger.json
+
+# Exported analytics
+metricool_export_*.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Temp / OS files
+.DS_Store
+Thumbs.db
+
+# Downloaded API docs (cached locally)
+ms.json
+metricool-api-en.pdf
