@@ -10,103 +10,307 @@ compatibility: |
   (one-time setup). Git required for auto-updates.
 ---
 
-# Gravitas API Gateway — Credential Skill
+# Gravitas Gateway
 
-**Load this skill before any other Gravitas skill.** It provides the shared
-authentication layer for all Gravitas API access.
+**This is a runtime guide.** When this skill loads, follow the execution flow
+below. Do not skip phases. Do not assume the key — you can only verify it by
+calling the Cloudflare Worker.
 
-## One-Time Setup
+---
 
-If this is your first time using Gravitas skills, run these commands once:
+## Phase 0: Introduce Yourself
+
+Before checking anything, tell the user what this skill does in one sentence:
+
+> This is the **Gravitas Gateway** — the credential layer for all Gravitas AI
+> agent skills. Once set up, any Gravitas skill (Metricool reports, Apify
+> scraping, Meta Graph API, Instagram data) can fetch its API keys from
+> `gateway.shazan.me` without you pasting secrets ever again.
+
+Then immediately proceed to Phase 1.
+
+---
+
+## Phase 1: Check Current State
+
+Run these checks **silently** (don't narrate each one — just do them):
 
 ```bash
+# Check if ~/.gravitas-skills exists and is a git repo
+ls ~/.gravitas-skills/.git 2>/dev/null && echo "REPO_OK" || echo "NO_REPO"
+
+# Check if .env exists
+test -f ~/.gravitas-skills/.env && echo "ENV_OK" || echo "NO_ENV"
+```
+
+Then present the user with a one-line status summary and route:
+
+| State | Route |
+|-------|-------|
+| `REPO_OK` + `ENV_OK` | Test existing key (Go to Phase 1b) |
+| `REPO_OK` + `NO_ENV` | Need key → Phase 2 |
+| `NO_REPO` + `ENV_OK` | Weird state — need repo → Phase 2 (clone fresh) |
+| `NO_REPO` + `NO_ENV` | First time → Phase 2 |
+
+### Phase 1b: Test Existing Key (skip if no .env)
+
+If `.env` exists, source it and test the key against the gateway without
+telling the user what the key is. **Do not use `curl -w` — it breaks on
+Windows bash. Use `curl -v` and grep the HTTP status line instead:**
+
+```bash
+source ~/.gravitas-skills/.env
+curl -sv -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
+  "$GRAVITAS_GATEWAY_URL/secrets" 2>&1 | grep -c "< HTTP/.*200"
+# > 0 means valid, 0 means invalid
+```
+
+Or simply check if the response body is valid JSON:
+
+```bash
+source ~/.gravitas-skills/.env
+RESP=$(curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
+  "$GRAVITAS_GATEWAY_URL/secrets" 2>/dev/null)
+if echo "$RESP" | grep -q '"secrets"'; then
+  echo "KEY_VALID"
+else
+  echo "KEY_INVALID"
+fi
+```
+
+- `KEY_VALID` → Skip to Phase 5 (full verification), announce: "Gateway key is valid — re-verifying everything."
+- `KEY_INVALID` → "Existing key is invalid (HTTP $CODE). Let's re-enter it." → Phase 2
+- If `GRAVITAS_GATEWAY_URL` is unset or `curl` couldn't connect → "Cannot reach gateway.shazan.me. Check your network." → Stop, don't proceed.
+
+---
+
+## Phase 2: Ask for the Gateway Key
+
+You, the agent, **do not know the key**. You cannot guess it, infer it, or
+read it from anywhere except the gateway's own response. The only way to
+verify a key is to send it to `gateway.shazan.me` and check the response.
+
+Use `ask_user` to collect the key. Tell the user:
+
+> The Gravitas Gateway runs on Cloudflare Workers at `gateway.shazan.me`.
+> I need your gateway API key to authenticate. I'll test it immediately
+> against the live endpoint — I can't know if it's correct until the
+> gateway accepts it.
+
+Ask:
+
+```
+"Paste your Gravitas Gateway API key"
+```
+
+Options: none needed (freeform only). `allowComment: true`.
+
+Once the user provides the key, immediately test it (Phase 3). Do not write
+it to disk yet. Do not echo it back.
+
+---
+
+## Phase 3: Verify the Key
+
+Test the key against the Cloudflare Worker. **Do not use `curl -w` — it
+breaks on Windows bash. Use `curl -v` and grep the status, or just check
+the response body:**
+
+```bash
+curl -s -H "x-api-key: <user_key>" "https://gateway.shazan.me/secrets"
+# 200 + {"secrets":[...]} = valid, 401 = invalid, no response = network issue
+```
+
+| Response | Meaning |
+|----------|---------|
+| JSON with `secrets` array | ✅ Valid key — proceed to Phase 4 |
+| `401` or empty | ❌ Invalid key — go back to Phase 2 |
+| Connection error / no response | ⚠️ Cannot reach gateway — check network. Tell the user and stop. |
+
+**Show the user what was unlocked.** Parse the `secrets` array and announce.
+List ONLY the skills that actually exist in `~/.gravitas-skills/` (run
+`ls -d ~/.gravitas-skills/*/` to discover them). Example announcement:
+
+> ✅ Key accepted! The gateway holds these secrets: `METRICOOL_TOKEN`, `APIFY_API_KEY`
+>
+> Available skills (🔑 = needs gateway, 🧩 = standalone):
+>
+> 🔑 **metricool** — pull analytics, manage posts, check competitors via Metricool API
+> 🔑 **metricool-engagement-rate-xlsx** — per-post engagement proof workbooks (IG, TikTok, YouTube)
+> 🔑 **metricool-engagement-rate-xlsx-v2** — improved version of the above
+> 🔑 **performance-social-report-slides** — quarterly Excel → PPTX slides + thumbnail gallery
+> 🧩 **client-friendly-report-writer** — raw metrics → client-facing analysis
+> 🧩 **datasheet-to-gsheet-mapper** — map messy CSVs to Google Sheets columns
+> 🧩 **youtube-publish-date-bulk** — batch YouTube URLs → publish dates column
+
+If the key fails (401), tell the user:
+
+> ❌ Gateway returned 401 — that key was rejected.
+> Make sure you copied the full key from your team lead / Shazan.
+> Let's try again.
+
+Go back to Phase 2. Max 3 attempts, then stop and mark blocked.
+
+---
+
+## Phase 4: Set Up the Repo
+
+Now that the key is verified, set up the filesystem. The only durable state
+is `~/.gravitas-skills/.env`. **Never write the key to any other file.**
+
+### 4a: Clone (if needed)
+
+If `~/.gravitas-skills/` is missing or not a git repo:
+
+```bash
+rm -rf ~/.gravitas-skills 2>/dev/null
 git clone https://github.com/shazanjustin/gravitas-skills.git ~/.gravitas-skills
-cp ~/.gravitas-skills/.env.example ~/.gravitas-skills/.env
 ```
 
-Then edit `~/.gravitas-skills/.env` and paste your gateway API key:
+### 4b: Write .env
 
 ```bash
-GRAVITAS_GATEWAY_KEY=your-key-here
+cat > ~/.gravitas-skills/.env << 'ENVEOF'
+# Gravitas Skills — Environment Variables
+# .env is gitignored — never committed.
+
+GRAVITAS_GATEWAY_KEY=<the_verified_key>
 GRAVITAS_GATEWAY_URL=https://gateway.shazan.me
+
+# Per-user: Instagram session for Instaloader (your own IG account)
+# Run: pip install instaloader && instaloader --login
+INSTALOADER_SESSION=~/.config/instaloader/session-your_username
+ENVEOF
 ```
 
-Get the key from Shazan or your team lead.
+Announce: "✅ `.env` written to `~/.gravitas-skills/.env`"
 
-## Auto-Update (Run Before Every Skill)
-
-Before using ANY Gravitas skill, always pull the latest skill definitions:
+### 4c: Git pull (update skill definitions)
 
 ```bash
 cd ~/.gravitas-skills && git pull
 ```
 
-If the folder doesn't exist, guide the user through the one-time setup above.
+If this fails (no network, etc.), note it but continue — the skill definitions
+on disk are the last clone and still usable.
 
-This keeps all skills current without the user thinking about it. New secrets,
-new endpoints, and fixes arrive automatically.
+---
 
-## Authentication
+## Phase 5: Full Verification
 
-Every request to the gateway must include the API key in the `x-api-key` header:
+Run the complete verification suite. Show each result to the user.
+
+### 5a: Load env + list secrets
 
 ```bash
 source ~/.gravitas-skills/.env
-curl -H "x-api-key: $GRAVITAS_GATEWAY_KEY" "$GRAVITAS_GATEWAY_URL/secrets"
+curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" "$GRAVITAS_GATEWAY_URL/secrets"
 ```
 
-The gateway returns 401 if the key is missing or wrong.
+### 5b: Fetch each available secret (skip value display — just confirm retrieval)
 
-## Available Endpoints
-
-### Static Secrets (API Keys)
-
-| Endpoint | Returns | Used By |
-|----------|---------|---------|
-| `GET /secret/METRICOOL_TOKEN` | `{name, value}` — Metricool personal token | metricool, metricool-engagement-rate-xlsx, performance-social-report-slides |
-| `GET /secret/APIFY_API_KEY` | `{name, value}` — Apify API key | intel-ig-manager, gravitas-data-manager |
-| `GET /secrets` | `{secrets: [...]}` — list of available secret names (no values) | Discovery / debugging |
-
-Example:
+For each secret name from 5a, confirm it returns JSON (don't use `-w`):
 
 ```bash
-source ~/.gravitas-skills/.env
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
-  "$GRAVITAS_GATEWAY_URL/secret/METRICOOL_TOKEN"
-# → {"name":"METRICOOL_TOKEN","value":"JWEJMBCYSNQ..."}
+  "$GRAVITAS_GATEWAY_URL/secret/$SECRET_NAME" | grep -q '"value"' && echo "OK" || echo "FAIL"
 ```
 
-### Meta Graph API (Facebook / Instagram)
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /token` | Returns a page access token + page ID + expiry. Auto-refreshes. |
-| `GET /pages` | Lists all accessible Facebook pages with linked Instagram business accounts |
-| `GET /thumbnail?platform=fb\|ig&post_id=<id>` | Returns `{thumbnail_url}` for a post |
-| `GET /comments?platform=fb\|ig&post_id=<id>` | Returns comments array for a post |
-
-Example:
+### 5c: Test Meta Graph API token endpoint
 
 ```bash
-source ~/.gravitas-skills/.env
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
-  "$GRAVITAS_GATEWAY_URL/token"
-# → {"page_access_token":"EAAcb7...","page_id":"113376605363982","expires_at":1749000000}
+  "$GRAVITAS_GATEWAY_URL/token" | grep -q 'page_access_token' && echo "OK" || echo "FAIL"
 ```
 
-Use the returned `page_access_token` directly with Facebook's Graph API:
+### 5d: Summarize
+
+Present a clean table:
+
+```
+     Gateway URL:  https://gateway.shazan.me
+     Key status:   ✅ Valid (tested live)
+     .env:         ~/.gravitas-skills/.env
+     Repo:         ~/.gravitas-skills/ (git)
+
+     Secrets        Status
+     ─────────      ──────
+     METRICOOL_TOKEN   ✅
+     APIFY_API_KEY     ✅
+
+     Endpoints      Status
+     ─────────      ──────
+     GET /secrets      ✅ 200
+     GET /token         ✅ 200 (Meta Graph API ready)
+```
+
+---
+
+## Phase 6: Wrap Up
+
+### 6a: Open the folder
 
 ```bash
-curl "https://graph.facebook.com/v25.0/me?access_token=<page_access_token>"
+# On Windows (try multiple approaches — one will work):
+cmd //c "start %USERPROFILE%\.gravitas-skills" 2>/dev/null || \
+  explorer "%USERPROFILE%\.gravitas-skills" 2>/dev/null || true
+
+# On macOS:
+open ~/.gravitas-skills 2>/dev/null || true
+
+# On Linux:
+xdg-open ~/.gravitas-skills 2>/dev/null || true
 ```
 
-## Secret → Skill Mapping
+### 6b: Explain what was built
 
-When a Gravitas skill says "load gravitas-gateway first," fetch the
-corresponding secret:
+Tell the user:
 
-| Skill | Secret to Fetch | How |
-|-------|----------------|-----|
+> Here's what was set up:
+>
+> - **`~/.gravitas-skills/`** — 7 agent skills + the gateway credential layer
+> - **`~/.gravitas-skills/.env`** — your gateway key (never committed, never pushed)
+> - **`gateway.shazan.me`** — the Cloudflare Worker holding all shared API keys
+>
+> Any skill that needs credentials will now:
+> 1. `source ~/.gravitas-skills/.env` to load the gateway key
+> 2. Fetch its specific secret from the gateway
+> 3. Use the credential, then let it evaporate from context
+>
+> You never paste a Metricool or Apify key again.
+
+### 6c: Ask what's next (with real skill names)
+
+List the skills actually found in the repo using `ls ~/.gravitas-skills/*/SKILL.md`.
+Present them as concrete options:
+
+```
+What do you want to do next?
+
+🔑 Gateway-powered:
+  1. metricool — pull analytics, manage posts, check competitors
+  2. metricool-engagement-rate-xlsx — per-post ER proof workbooks
+  3. metricool-engagement-rate-xlsx-v2 — improved ER workbooks
+  4. performance-social-report-slides — quarterly Excel → PPTX
+
+🧩 Standalone:
+  5. client-friendly-report-writer — metrics → client-ready analysis
+  6. datasheet-to-gsheet-mapper — CSV → Google Sheets columns
+  7. youtube-publish-date-bulk — batch YouTube publish dates
+
+Setup:
+  8. Configure Instaloader (personal IG session for scraping)
+  9. Done — gateway is ready when a skill needs it
+```
+
+---
+
+## Reference: Secret → Skill Mapping
+
+The agent uses this table to know which secret to fetch when a skill loads:
+
+| Skill | Secret to Fetch | Endpoint |
+|-------|-----------------|----------|
 | `metricool` | `METRICOOL_TOKEN` | `GET /secret/METRICOOL_TOKEN` |
 | `metricool-engagement-rate-xlsx` | `METRICOOL_TOKEN` | `GET /secret/METRICOOL_TOKEN` |
 | `metricool-engagement-rate-xlsx-v2` | `METRICOOL_TOKEN` | `GET /secret/METRICOOL_TOKEN` |
@@ -115,71 +319,47 @@ corresponding secret:
 | `gravitas-data-manager` | `APIFY_API_KEY` | `GET /secret/APIFY_API_KEY` |
 | `fb-ig-engagement-xlsx` | Meta token | `GET /token` |
 
-## Full Agent Workflow
+---
 
-When an agent loads a Gravitas skill (e.g., metricool):
+## Reference: Full Gateway API
 
-1. **Update:** `cd ~/.gravitas-skills && git pull` (skip if folder missing → guide setup)
-2. **Load env:** `source ~/.gravitas-skills/.env`
-3. **Fetch secret:** `curl -H "x-api-key: $GRAVITAS_GATEWAY_KEY" "$GRAVITAS_GATEWAY_URL/secret/METRICOOL_TOKEN"`
-4. **Use it:** Pass the token to the Metricool API as documented in the metricool skill
+### Static Secrets
 
-The agent never stores or logs the secret value — fetch it, use it, let it
-evaporate from context.
+| Endpoint | Returns |
+|----------|---------|
+| `GET /secrets` | `{"secrets": ["METRICOOL_TOKEN", "APIFY_API_KEY"]}` — available secret names only |
+| `GET /secret/:name` | `{"name": "...", "value": "..."}` — full secret value |
 
-## Per-User Credentials (Not on the Gateway)
+### Meta Graph API (Facebook / Instagram)
 
-Some credentials are per-person and cannot be shared via the gateway. These
-are stored in your local `~/.gravitas-skills/.env` and set up once.
+| Endpoint | Returns |
+|----------|---------|
+| `GET /token` | `{"page_access_token": "...", "page_id": "...", "expires_at": ...}` |
+| `GET /pages` | List of Facebook pages with linked Instagram business accounts |
+| `GET /thumbnail?platform=fb\|ig&post_id=<id>` | `{"thumbnail_url": "..."}` |
+| `GET /comments?platform=fb\|ig&post_id=<id>` | Comments array for a post |
 
-### Instaloader (Instagram scraping)
+All endpoints require `x-api-key: $GRAVITAS_GATEWAY_KEY` header.
 
-Instaloader uses YOUR Instagram account to scrape public data. Each team
-member needs their own session.
+### Per-User Credentials (Local .env)
 
-**One-time setup — agent guides the user:**
+Some credentials are per-person and stored in `~/.gravitas-skills/.env`:
 
-1. Check if `INSTALOADER_SESSION` is set in `~/.gravitas-skills/.env`
-2. If not set, guide the user:
-   ```bash
-   pip install instaloader
-   instaloader --login
-   # → Enter your Instagram username and password
-   # → Session saved to ~/.config/instaloader/session-<your_username>
-   ```
-3. Add the session path to `~/.gravitas-skills/.env`:
-   ```
-   INSTALOADER_SESSION=~/.config/instaloader/session-your_username
-   ```
-4. For Windows users, the path is typically:
-   ```
-   C:/Users/<name>/AppData/Local/Instaloader/session-<your_username>
-   ```
+- **`INSTALOADER_SESSION`** — path to Instagram session file for Instaloader scraping.
+  Set up once: `pip install instaloader && instaloader --login`.
+  Skills that use it: intel-ig-manager, gravitas-data-manager.
+  Fallback: Apify (uses shared `APIFY_API_KEY` from gateway).
 
-Skills that use Instaloader (intel-ig-manager, gravitas-data-manager) will
-read `INSTALOADER_SESSION` from this file. If it's missing, they'll fall back
-to Apify (which uses the shared `APIFY_API_KEY` from the gateway).
+---
 
-### Credential Precedence
-
-| Type | Source | Example |
-|------|--------|---------|
-| Shared team keys | Gateway (`gateway.shazan.me`) | METRICOOL_TOKEN, APIFY_API_KEY, Meta tokens |
-| Per-user sessions | Local `.env` file | INSTALOADER_SESSION |
-| Fallback env vars | Shell environment | `export METRICOOL_TOKEN=...` |
-
-## Adding a New Secret
+## Reference: Adding a New Secret
 
 **Shared secret (add to gateway):**
-
-1. Add the env var to the gateway worker (`wrangler secret put`)
-2. Update this SKILL.md with the new secret name and mapping
+1. Add env var to the gateway worker (`wrangler secret put`)
+2. Update this SKILL.md secret mapping tables
 3. Push to GitHub → next `git pull` picks it up
 
-**Per-user credential (add to .env.example):**
-
-1. Add the variable to `.env.example` with a comment explaining setup
-2. Update this SKILL.md with setup instructions
-3. Push to GitHub → team members add it to their local `.env` on next pull
-
-No other skills change. No user action needed for shared secrets.
+**Per-user credential:**
+1. Add variable to `.env.example` with setup instructions
+2. Update this SKILL.md
+3. Push to GitHub → team members add to local `.env` on next pull
