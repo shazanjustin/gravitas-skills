@@ -1,146 +1,285 @@
 ---
 name: gravitas-data-manager
 description: >
-  Single entry point for ALL Gravitas social/reporting data work across
-  Facebook, Instagram, and TikTok. Owns the Intel App database-backed FB/IG
-  workflow (profile → competitor → scrape → export), TikTok analytics via
-  Metricool, cross-platform workbook assembly, manual data handling, and QA.
-  Load this when the user wants FB/IG competitor data, social engagement
-  reports, collab-aware Instagram data, Apify scraping, Metricool TikTok
-  analytics, database-backed proof workbooks, or multi-platform reconciliation.
+  Single entry point for ALL Gravitas social/reporting data across Facebook,
+  Instagram, and TikTok. Two clean paths: pull your own brand's data (official
+  Meta API + Metricool), or pull competitor data (Instaloader/Apify public
+  scrape). Owns the Intel App database, cross-platform workbook assembly,
+  manual data handling, and QA. Load this when the user wants social
+  engagement reports, competitor analysis, collab-aware Instagram data,
+  Apify scraping, Metricool TikTok analytics, database-backed proof
+  workbooks, or multi-platform reconciliation.
 compatibility: |
-  Requires Python 3.8+, curl, git. Credentials: Supabase (local .env),
-  Apify + Meta tokens (via gravitas-gateway → gateway.shazan.me),
-  Metricool token (via gravitas-gateway), Instaloader session (local .env).
-  Scripts: requests, supabase, openpyxl.
-argument-hint: "[platform] [brand] [date range]"
+  Requires Python 3.8+, curl, git. Shared secrets (Apify, Meta tokens,
+  Metricool, Supabase) via gravitas-gateway → gateway.shazan.me.
+  Per-user: Instaloader session (local .env). Scripts: requests, supabase,
+  openpyxl.
+argument-hint: "[brand] [date range]"
 ---
 
 # Gravitas Data Manager
 
-Single skill for all Gravitas social data — FB/IG via Intel App database,
-TikTok via Metricool, cross-platform assembly, manual data, and QA. No more
-routing between separate skills.
+Two paths. One skill. No more routing between separate tools.
 
 ## Phase 0: Credentials
 
-Before ANY workflow, authenticate. Load `gravitas-gateway` if it hasn't been
-loaded in this session (run `cd ~/.gravitas-skills && git pull`, source the
-`.env`). Then fetch the secrets this skill needs:
+Before ANY workflow, fetch shared secrets from the gateway. Load
+`gravitas-gateway` first if it hasn't been loaded this session
+(`cd ~/.gravitas-skills && git pull`, source `.env`).
 
 ```bash
 source ~/.gravitas-skills/.env
 
-# Apify token (for FB/IG scraping fallback)
+# Supabase (Intel App database)
+curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
+  "$GRAVITAS_GATEWAY_URL/secret/SUPABASE_SERVICE_ROLE_KEY"
+
+# Apify token (FB/IG scraping fallback)
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
   "$GRAVITAS_GATEWAY_URL/secret/APIFY_API_KEY"
 
-# Meta Page token (for official FB/IG insights)
+# Meta Page token (official FB/IG insights — Own Data path)
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
   "$GRAVITAS_GATEWAY_URL/token"
 
-# Metricool token (for TikTok analytics)
+# Metricool token (TikTok analytics — Own Data path)
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
   "$GRAVITAS_GATEWAY_URL/secret/METRICOOL_TOKEN"
 ```
 
-**Local credentials** (in `gravitas-data-manager/.env`, never committed):
+Export fetched values as environment variables so the Python scripts pick them up
+(they check `os.environ` before `.env`):
+
+```bash
+export SUPABASE_URL="https://kzobygrjohvbuxiljbgk.supabase.co"
+export SUPABASE_SERVICE_ROLE_KEY="<from gateway>"
+export APIFY_API_KEY="<from gateway>"
+```
+
+**Local-only credentials** (in `gravitas-data-manager/.env`, never committed):
 
 ```env
-SUPABASE_URL=https://kzobygrjohvbuxiljbgk.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 INSTALOADER_SESSION=C:/Users/dell/AppData/Local/Instaloader/session-_notakaki
 IG_MANAGER_OUTPUT_DIR=outputs/gravitas-data-manager
 ```
 
-Credentials are resolved in this order: environment variables → `.env` file → hardcoded defaults.
-
-**Never print tokens, service-role keys, Apify tokens, Meta access tokens, or session cookies in chat.**
+**Never print tokens, service-role keys, Apify tokens, Meta access tokens, or
+session cookies in chat.**
 
 ---
 
-## Phase 1: Route
+## Phase 1: Choose Your Path
 
-Ask the user what they need. Not script-by-script — figure out the intent:
+Ask the user:
 
 ```
-What do you need?
+Whose data are we pulling?
 
-1. FB/IG competitor report — scrape posts, export XLSX, visual review
-2. TikTok analytics — pull from Metricool
-3. Cross-platform workbook — combine FB + IG + TikTok into one report
-4. Manual/pasted data — clean and normalize client-provided tables
-5. QA check — verify an existing report's sources, formulas, and coverage
+1. Our own brand — official metrics from our accounts
+   (Meta API for FB/IG, Metricool for TikTok)
+2. Competitor data — public scrape of their posts
+   (Instaloader or Apify for IG/FB)
 ```
-
-Route based on the answer:
 
 | Choice | Go to |
 |--------|-------|
-| 1 | FB/IG Database Workflow (Phase 2) |
-| 2 | TikTok via Metricool (Phase 5) |
-| 3 | Cross-Platform Assembly (Phase 6) |
-| 4 | Manual Data (Phase 7) |
-| 5 | QA & Delivery (Phase 8) |
+| 1 — Own Data | Path A (Phase 2) |
+| 2 — Competitor Data | Path B (Phase 3) |
+
+If the user also mentions cross-platform assembly, manual data, QA, or report
+slides — note it and handle after the primary path completes.
 
 ---
 
-## Phase 2: FB/IG Database Workflow
+## Phase 2: Path A — Own Data
 
-The core Intel App workflow: pick an account profile → pick competitors →
-scrape/ingest → export.
+We own these accounts. We have official access. We get full metrics.
 
-### Step 2a — List account profiles
+### Step A1: Pick the brand
 
 Query Supabase `competitor_profiles` where `is_own_profile = true`. Show:
 
 - Profile name and slug
-- Number of linked competitors
-- Meta IG/Page IDs if set
-- Known platform handles from `competitor_profile_inputs`
+- Connected platforms (IG handle, FB page, Metricool)
+- Whether `meta_ig_id` and `meta_page_id` are set
 
-Use `ask_user` with options from the results. If only one profile, auto-select
-with a one-line confirmation.
+Use `ask_user` with options from the results. If only one, auto-select.
 
-### Step 2b — Show competitors
+### Step A2: What metrics do you want?
 
-Look up `profile_competitors` for the selected profile. For each competitor:
+**Ask the user** — don't assume. Present with recommendations:
 
-- Name, IG handles, FB URLs from `competitor_profile_inputs`
+```
+What metrics do you need?
+
+Recommended for owned accounts (all available via official sources):
+  ☑ Reach
+  ☑ Impressions
+  ☑ Likes / Reactions
+  ☑ Comments
+  ☑ Shares
+  ☑ Saves (Instagram)
+  ☑ Video views
+  ☑ Engagement rate (ER%)
+  ☑ Follower count / growth
+
+Also available:
+  ☐ Post link / permalink
+  ☐ Caption / post text
+  ☐ Media type (image, video, carousel)
+  ☐ Post date / time
+```
+
+The user can select all, some, or name custom metrics. If they don't know,
+default to: reach, impressions, likes, comments, shares, engagement rate.
+
+### Step A3: Date range
+
+Ask for the reporting period. Accept `YYYY-MM-DD` to `YYYY-MM-DD`, presets
+("last month", "May 2026"), or a single month.
+
+### Step A4: Pull the data
+
+Route by platform — handled automatically based on what the brand has connected:
+
+**Instagram + Facebook (Meta API):**
+
+```bash
+source ~/.gravitas-skills/.env
+TOKEN=$(curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
+  "$GRAVITAS_GATEWAY_URL/token" | python -c "import sys,json; print(json.load(sys.stdin)['page_access_token'])")
+PAGE_ID=$(curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
+  "$GRAVITAS_GATEWAY_URL/token" | python -c "import sys,json; print(json.load(sys.stdin)['page_id'])")
+
+# Instagram insights
+curl -s "https://graph.facebook.com/v25.0/${IG_USER_ID}/media?fields=...&access_token=${TOKEN}"
+
+# Facebook page insights
+curl -s "https://graph.facebook.com/v25.0/${PAGE_ID}/posts?fields=...&access_token=${TOKEN}"
+```
+
+**TikTok (Metricool):**
+
+Load the `metricool` skill, run `brands`, pick the matching brand,
+confirm TikTok is connected via `networks <blogId>`, then pull:
+```
+posts tiktok <blogId> YYYY-MM-DDT00:00:00 YYYY-MM-DDT23:59:59
+```
+
+### Step A5: Output
+
+Present the data as a table in chat first. Then offer:
+1. Export to XLSX (with official-source labels)
+2. Add to database (`competitor_posts` with `source = 'official_meta'`)
+3. Generate report slides
+
+---
+
+## Phase 3: Path B — Competitor Data
+
+We don't own these accounts. We scrape publicly available data. Metrics are
+limited to what's visible.
+
+### Step B1: Pick the brand (account profile)
+
+Same as Step A1 — query `competitor_profiles` where `is_own_profile = true`.
+The brand determines which competitors are linked.
+
+### Step B2: Pick competitors
+
+Look up `profile_competitors` for the selected profile. Show each competitor
+with:
+
+- Name
+- IG handles / FB URLs (from `competitor_profile_inputs`)
 - Whether posts already exist in `competitor_posts`
 - Available platforms
 
-If no competitors linked, offer to show all unlinked competitor profiles.
+If no competitors linked, show all unlinked competitor profiles.
 
-### Step 2c — Pick platform
+User picks one or more competitors. Use `ask_user` with `allowMultiple: true`.
 
-```
-Which platform?
-1. Instagram
-2. Facebook
-3. Both
-```
+### Step B3: What metrics do you want?
 
-### Step 2d — Action menu
-
-Show the 7 actions the user can take on these competitors:
+**This is critical — competitor data has hard limits.** Present with clear
+availability warnings:
 
 ```
-1. Scrape / ingest posts
-2. Visual Review & Classify
-3. Export XLSX engagement report
-4. Generate Report Slides
-5. List existing DB posts
-6. Refresh thumbnails
-7. Manage platform handles/URLs
+What metrics do you need?
+
+✅ Available via public scrape:
+  ☑ Likes / Reactions
+  ☑ Comments
+  ☑ Video views (Instagram)
+  ☑ Post type (image, video, carousel)
+  ☑ Post link / permalink
+  ☑ Caption / post text
+  ☑ Post date / time
+  ☑ Collab / tagged users (Instagram)
+  ☑ Engagement rate (ER%) — calculated as (likes+comments)/views
+
+❌ NOT available via public scrape:
+  ✗ Reach
+  ✗ Impressions
+  ✗ Saves
+  ✗ Shares (Instagram)
+  ✗ Follower count changes
+  ✗ Any official Meta metrics
+
+⚠️  If you need reach/saves/impressions, those only come from
+    official Meta API — and only for accounts you own.
 ```
 
-#### [1] Scrape / Ingest Posts
+If the user insists on metrics that aren't available, explain the limitation
+again and offer the closest proxy. Don't silently substitute.
 
-Ask: source (Instaloader, Apify, Official Meta, DB-only), platform, date range.
-Confirm before executing.
+### Step B4: Instagram scraping source
 
-**Instagram internal API (Instaloader session):**
+**For Instagram competitor data, ask the user which scraping source:**
+
+```
+How should we pull Instagram data?
+
+1. Instaloader (FREE)
+   • Uses YOUR Instagram login session
+   • Username + password → stored locally on your machine
+   • Rate limited: ~200 posts per scrape, needs delays
+   • Captures collab posts, tagged users, post types
+   • Drawback: uses your personal account, session expires
+     (refresh with: instaloader --login _notakaki)
+
+2. Apify (PAID, ~$5 free credit)
+   • No personal account needed
+   • More reliable, fewer rate limits
+   • Better for bulk/large scrapes
+   • Drawback: costs money after free credit runs out
+   • Uses shared APIFY_API_KEY from gateway
+```
+
+Wait for the user's choice. Default to Instaloader for small scrapes, suggest
+Apify for bulk or when rate limits become a problem.
+
+If they choose Instaloader, check that `INSTALOADER_SESSION` is set in
+`.env`. If not, guide them:
+
+```bash
+pip install instaloader
+instaloader --login _notakaki
+# → Enter Instagram username and password
+# → Session saved to C:/Users/dell/AppData/Local/Instaloader/session-_notakaki
+```
+
+Then set it in the `.env`.
+
+### Step B5: Date range
+
+Same as Step A3 — ask for the reporting period.
+
+### Step B6: Scrape
+
+Execute based on the user's platform + source choices.
+
+**Instagram via Instaloader:**
 
 ```bash
 python scripts/ingest_ig_posts.py \
@@ -152,31 +291,24 @@ python scripts/ingest_ig_posts.py \
 
 Captures: shortcode, URL, date, caption, likes, comments, video views,
 media type, tagged users, collab signals, thumbnail URLs.
-Does NOT capture official reach, saves, or shares.
+Does NOT capture: reach, saves, shares, impressions.
 
-**Apify (fallback when Instaloader is stale/rate-limited):**
+**Instagram via Apify:**
 
-Use the Intel App `apify-ingest` path. Configure platform-specific actor input
-with handle/page URL and date filters. Normalize into `competitor_posts`.
+Use the Intel App `apify-ingest` path with the `APIFY_API_KEY` from gateway.
+Configure platform-specific actor input. Normalize into `competitor_posts`.
 
-**Official Meta API (for owned-account metrics):**
+**Facebook via Apify:**
 
-Use the gateway's Meta token endpoint:
+Use the configured Facebook Apify actor. Store normalized rows in
+`competitor_posts` with `platform = 'facebook'`.
 
-```bash
-source ~/.gravitas-skills/.env
-TOKEN=$(curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
-  "$GRAVITAS_GATEWAY_URL/token" | python -c "import sys,json; print(json.load(sys.stdin)['page_access_token'])")
-```
+After scraping, summarize: total posts, new vs existing, collab count (IG),
+media type breakdown, any errors or rate limits hit.
 
-Then query Facebook's Graph API directly.
+### Step B7: Visual Review (optional, IG only)
 
-After ingest, summarize: total posts, new vs existing, platform, collab count
-for IG, media type breakdown.
-
-#### [2] Visual Review & Classify
-
-Generate HTML review page with full-resolution images:
+Offer visual review for quality classification:
 
 ```bash
 python scripts/visual_review.py \
@@ -186,12 +318,9 @@ python scripts/visual_review.py \
   --to YYYY-MM-DD
 ```
 
-Downloads full-res images, creates browsable HTML page, saves classifications
-back to Supabase. Use when small thumbnails are too low quality.
+Downloads full-res images, creates browsable HTML, saves classifications.
 
-#### [3] Export XLSX
-
-Instagram DB-backed export:
+### Step B8: Export
 
 ```bash
 python scripts/export_ig_xlsx.py \
@@ -201,121 +330,43 @@ python scripts/export_ig_xlsx.py \
   --to YYYY-MM-DD
 ```
 
-Produces Summary + Instagram Proof tabs with date, type, likes, comments,
-views, engagements, ER%, collab status, tagged users, caption.
-
-For Facebook or combined FB/IG, create a new exporter that reads
-`competitor_posts` by platform, writes separate proof tabs, and labels
-formulas/denominators.
-
-#### [4] Generate Report Slides
-
-For Friso Gold reports, load `friso-gold-report` for full PPTX with
-competitive analysis slides.
-
-For other brands, use `scripts/activity_slide_review.py` for drag-and-drop
-review and presentation-ready layouts.
-
-#### [5] List Existing DB Posts
-
-Query `competitor_posts` for selected profile, platform(s), date range. Show:
-total count, date range, collab count (IG), platform breakdown, sample posts.
-
-#### [6] Refresh Thumbnails
-
-Call the Intel App thumbnail refresh helper when CDN URLs expire.
-
-#### [7] Manage Platform Handles/URLs
-
-Show current `competitor_profile_inputs` rows. Offer: add IG handle, add FB
-Page URL, update existing, remove stale. Then return to action menu.
-
-### Step 2e — After action
-
-Return to the action menu until the user says done, then offer export or
-cross-platform assembly.
+Produces Summary + Instagram Proof tabs. For Facebook or combined FB/IG,
+create an exporter reading `competitor_posts` by platform, with separate
+proof tabs and labeled formulas.
 
 ---
 
-## Phase 3: Instagram Source Priority
+## Phase 4: Cross-Platform Assembly
 
-When IG campaign coverage may include KOL/collab/tagged posts, follow this
-order. Never silently blend sources:
+When the task spans both Own Data (Path A) and Competitor Data (Path B), or
+when TikTok + FB/IG need to be combined, assemble a master workbook.
 
-1. **Instaloader / internal API** — owned, tagged, collab-aware public proof.
-2. **Apify** — when Instaloader is stale, rate-limited, or broader public/KOL collection is needed.
-3. **Official Meta API** — only for owned-account official metrics (reach, saves, shares, impressions). Label separately from public/collab proof.
-4. **Manual / pasted data** — only when API/database collection is unavailable or explicitly supplied.
-
----
-
-## Phase 4: Engagement Formulas
-
-All formulas in one place. Always label which formula was used.
-
-| Platform + Source | Formula | Denominator | Notes |
-|---|---|---|---|
-| IG official | `(likes + comments + saves + shares) / reach` | reach | Requires Meta API |
-| IG public/proxy | `(likes + comments) / views` | views | Instaloader/Apify; fallback to `N/A` if no views |
-| FB official | `engagements / reach` | reach | Requires Meta Page insights |
-| FB public/proxy | `public engagements / followers` | followers | Apify scrape; engagements = reactions + comments + shares |
-| TikTok Metricool | Use Metricool's returned `engagement` % | reach (Metricool) | Components: likes + shares + comments |
-| TikTok manual | Use export's formula | as provided | Do not assume it matches Metricool |
-
-**Never calculate a single cross-platform ER across FB, IG, and TikTok.**
-Sum engagements/views/reach only as planning/reference totals, clearly labeled.
-
----
-
-## Phase 5: TikTok via Metricool
-
-When TikTok analytics are needed and the brand is connected in Metricool:
-
-1. Load the `metricool` skill and run `brands` to discover live brands.
-2. Pick the relevant brand by account/handle match.
-3. Confirm TikTok is connected: `networks <blogId>`.
-4. Pull posts with ISO date-time ranges:
-   ```
-   posts tiktok <blogId> YYYY-MM-DDT00:00:00 YYYY-MM-DDT23:59:59
-   ```
-5. Match returned `videoId`, `shareUrl`, title, description, post date to report rows.
-6. Label Metricool rows as `Metricool API v2 /v2/analytics/posts/tiktok`.
-
-Common TikTok fields from Metricool: views, reach, likes, comments, shares,
-engagement percentage, duration, cover image, share URL. Do not assume
-favorites/saves unless present in the response.
-
----
-
-## Phase 6: Cross-Platform Assembly
-
-When the report needs FB + IG + TikTok combined, build or update an `.xlsx`
-with these tabs:
+### Tabs
 
 | Tab | Content |
 |-----|---------|
-| `Summary` | One row per requested post/campaign, static totals, NO blended ER unless explicitly approved |
+| `Summary` | One row per post/campaign, static totals, NO blended ER unless approved |
 | `All Matched Data` | Normalized combined rows across all platforms |
-| `Instagram Proof` | IG-only rows with source and denominator labels |
-| `Facebook Proof` | FB-only rows with source and denominator labels |
-| `TikTok Proof` | TikTok-only rows, Metricool-checked when available |
+| `Instagram Proof` | IG-only, source + denominator labels |
+| `Facebook Proof` | FB-only, source + denominator labels |
+| `TikTok Proof` | TikTok-only, Metricool-checked when available |
 | `Data Notes` | Source, formula, date range, assumptions, limitations |
-| Optional: `Raw Metricool`, `Raw Intel`, `Raw Manual Export` | Raw evidence tabs |
+| Optional raw tabs | `Raw Metricool`, `Raw Intel`, `Raw Manual Export` |
 
-Normalized columns (include what's available):
+### Normalized columns
 
-- Planned post/campaign name, Platform, Metric Source
-- Source campaign/title, Publish time, Post type / format
-- Duration, Views, Reach, Likes/Reactions, Shares, Comments, Saves/Favorites
-- Follows, Total Engagements, Engagement Rate, ER Denominator
-- Engagement Components, Post ID, Link/Permalink, Notes
+Include what's available: planned post/campaign name, platform, metric source,
+source campaign/title, publish time, post type/format, duration, views, reach,
+likes/reactions, shares, comments, saves/favorites, follows, total engagements,
+engagement rate, ER denominator, engagement components, post ID, link/permalink,
+notes.
 
 ---
 
-## Phase 7: Manual / Pasted Data
+## Phase 5: Manual / Pasted Data
 
-Use only when API/database access is unavailable or the user provides a
-client export. Steps:
+Use only when API/database access is unavailable or the user provides a client
+export.
 
 1. Read the provided data (CSV, Excel, pasted table).
 2. Match to known profiles/handles when possible.
@@ -326,65 +377,81 @@ client export. Steps:
 
 ---
 
-## Phase 8: QA & Delivery
+## Engagement Formulas (Reference)
 
-Before delivering any workbook, run these checks:
+All formulas in one place. Always label which formula was used.
 
-- [ ] Every requested campaign/post has expected platform rows or a clear missing-data note
-- [ ] Date ranges match the user's report period
-- [ ] Instagram KOL/collab/tagged content checked via Instaloader/Apify before declaring IG rows complete
+| Platform + Source | Formula | Denominator | Notes |
+|---|---|---|---|
+| IG official | `(likes + comments + saves + shares) / reach` | reach | Own Data only; requires Meta API |
+| IG public/proxy | `(likes + comments) / views` | views | Competitor Data; fallback to `N/A` if no views |
+| FB official | `engagements / reach` | reach | Own Data only; requires Meta Page insights |
+| FB public/proxy | `public engagements / followers` | followers | Competitor Data; engagements = reactions + comments + shares |
+| TikTok Metricool | Use Metricool's returned `engagement` % | reach (Metricool) | Own Data; components: likes + shares + comments |
+| TikTok manual | Use export's formula | as provided | Do not assume it matches Metricool |
+
+**Never calculate a single cross-platform ER across FB, IG, and TikTok.**
+Sum engagements/views/reach only as planning/reference totals, clearly labeled.
+
+---
+
+## QA Checklist
+
+Before delivering any workbook:
+
+- [ ] Every requested campaign/post has expected platform rows or a missing-data note
+- [ ] Date ranges match the user's reporting period
+- [ ] Instagram collab/tagged content checked via Instaloader/Apify before declaring IG complete
 - [ ] TikTok data uses ISO date-time ranges, not plain dates
-- [ ] Metricool `engagement` values converted correctly when writing as Excel percentages
-- [ ] Favorites/saves not included when the source didn't provide them
+- [ ] Metricool `engagement` values converted correctly as Excel percentages
+- [ ] Favorites/saves not included when source didn't provide them
 - [ ] Cross-platform summaries do not imply a shared denominator
-- [ ] Any manual/pasted data is labeled as such
-- [ ] Any source mismatch (planned static vs source video/reel) is documented
+- [ ] Manual/pasted data labeled as such
+- [ ] Source mismatches (planned static vs source video/reel) documented
 - [ ] Official Meta metrics never silently blended with public/proxy scrape metrics
+- [ ] Competitor data doesn't claim reach/saves/impressions that aren't available
 
 ---
 
 ## Scripts
 
-All scripts live in `scripts/` relative to this SKILL.md. They use
-`Path(__file__).resolve().parent.parent` to locate the skill root and `.env`.
+All scripts in `scripts/` relative to this SKILL.md.
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/ig_utils.py` | Shared: Supabase connection, profile listing, session management |
-| `scripts/ingest_ig_posts.py` | Instagram scraping via internal API with Instaloader cookies; collab-aware |
-| `scripts/export_ig_xlsx.py` | Build IG public/proxy engagement XLSX from Supabase |
-| `scripts/visual_review.py` | Generate HTML review page with full-res images for classification |
-| `scripts/activity_slide_review.py` | Multi-competitor drag-and-drop activity classification |
+| `scripts/ig_utils.py` | Supabase connection, profile listing, session management |
+| `scripts/ingest_ig_posts.py` | IG scraping via Instaloader; collab-aware |
+| `scripts/export_ig_xlsx.py` | IG public/proxy engagement XLSX from Supabase |
+| `scripts/visual_review.py` | HTML review page with full-res images |
+| `scripts/activity_slide_review.py` | Multi-competitor drag-and-drop classification |
 
-Run scripts with `--help` for full argument lists. The Supabase credentials,
-Instaloader session path, and output directory are read from `.env` in the
-skill directory.
+Credential resolution order: `os.environ` → `.env` file → hardcoded defaults.
+Supabase credentials come from gateway (exported as env vars in Phase 0).
 
 ---
 
 ## Database Reference
 
-See `references/intel-db-schema.md` for full schema of:
+See `references/intel-db-schema.md` for schema of:
 `competitor_profiles`, `profile_competitors`, `competitor_profile_inputs`,
 `competitor_posts`.
 
 Key conventions:
-- Instagram rows → `platform = 'instagram'`
-- Facebook rows → `platform = 'facebook'`
+- Instagram → `platform = 'instagram'`
+- Facebook → `platform = 'facebook'`
 - Raw payloads → `raw` JSONB column
-- IG handles stored in `competitor_profile_inputs.input_url` (with or without `@`)
+- Source labels: `official_meta`, `instaloader`, `apify`, `metricool`, `manual`
 
 ---
 
 ## Known Issues
 
-1. **Instagram image quality** — small thumbnails too low quality for classification; use Visual Review for full-res.
-2. **Instaloader session expiry** — refresh with `instaloader --login _notakaki`.
-3. **Instagram rate limiting** — use 1.5s+ delays between calls.
-4. **No official IG reach from public scrape** — internal API/Apify do not provide reach/saves/shares.
-5. **CDN URL expiry** — refresh thumbnails when images break.
-6. **Collab dedup** — IG collab posts can appear on multiple profiles; dedupe by shortcode/post URL.
-7. **Apify actor drift** — actor names/schemas can change; verify before building reports.
-8. **FB metric variance** — public scrapes expose reactions/comments/shares but not reach; official API needs owned-page permissions.
-9. **Service role key in `.env`** — never commit or print.
-10. **Metricool engagement %** — multiply by 100 when converting to Excel percentage format.
+1. **Instaloader session expiry** — refresh with `instaloader --login _notakaki`.
+2. **Instagram rate limiting** — use 1.5s+ delays between calls.
+3. **No official metrics from public scrape** — Instaloader/Apify do not provide reach, saves, shares, or impressions. Only available via Meta API for owned accounts.
+4. **CDN URL expiry** — refresh thumbnails when images break.
+5. **Collab dedup** — IG collab posts appear on multiple profiles; dedupe by shortcode.
+6. **Apify actor drift** — actor names/schemas can change; verify before building reports.
+7. **FB metric variance** — public scrapes give reactions/comments/shares but not reach.
+8. **Metricool engagement %** — multiply by 100 when converting to Excel %.
+9. **Credentials** — never print tokens, service-role keys, or session cookies in chat.

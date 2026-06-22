@@ -317,9 +317,12 @@ The agent uses this table to know which secret to fetch when a skill loads:
 | `metricool-engagement-rate-xlsx` | `METRICOOL_TOKEN` | `GET /secret/METRICOOL_TOKEN` |
 | `metricool-engagement-rate-xlsx-v2` | `METRICOOL_TOKEN` | `GET /secret/METRICOOL_TOKEN` |
 | `performance-social-report-slides` | `METRICOOL_TOKEN` | `GET /secret/METRICOOL_TOKEN` |
-| `intel-ig-manager` | `APIFY_API_KEY` + Meta token | `GET /secret/APIFY_API_KEY` + `GET /token` |
-| `gravitas-data-manager` | `APIFY_API_KEY` | `GET /secret/APIFY_API_KEY` |
+| `gravitas-data-manager` | `APIFY_API_KEY` + Meta token + `METRICOOL_TOKEN` + `SUPABASE_SERVICE_ROLE_KEY` | `GET /secret/APIFY_API_KEY` + `GET /token` + `GET /secret/METRICOOL_TOKEN` + `GET /secret/SUPABASE_SERVICE_ROLE_KEY` |
 | `fb-ig-engagement-xlsx` | Meta token | `GET /token` |
+
+> **Note:** `intel-ig-manager` and the old `gravitas-data-manager` have been merged
+> into a single `gravitas-data-manager` skill that owns all FB/IG/TikTok workflows.
+> Supabase credentials moved to gateway — no more hardcoded service-role keys.
 
 ---
 
@@ -329,7 +332,7 @@ The agent uses this table to know which secret to fetch when a skill loads:
 
 | Endpoint | Returns |
 |----------|---------|
-| `GET /secrets` | `{"secrets": ["METRICOOL_TOKEN", "APIFY_API_KEY"]}` — available secret names only |
+| `GET /secrets` | `{"secrets": ["METRICOOL_TOKEN", "APIFY_API_KEY", "SUPABASE_SERVICE_ROLE_KEY"]}` — available secret names only |
 | `GET /secret/:name` | `{"name": "...", "value": "..."}` — full secret value |
 
 ### Meta Graph API (Facebook / Instagram)
@@ -349,7 +352,7 @@ Some credentials are per-person and stored in `~/.gravitas-skills/.env`:
 
 - **`INSTALOADER_SESSION`** — path to Instagram session file for Instaloader scraping.
   Set up once: `pip install instaloader && instaloader --login`.
-  Skills that use it: intel-ig-manager, gravitas-data-manager.
+  The primary skill that uses Instaloader is `gravitas-data-manager`.
   Fallback: Apify (uses shared `APIFY_API_KEY` from gateway).
 
 ---
