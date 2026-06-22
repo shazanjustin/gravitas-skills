@@ -13,6 +13,10 @@ compatibility: |
 
 # Metricool API — Gravitas Skill
 
+> **Prerequisite:** Load the `gravitas-gateway` skill first to obtain your
+> Metricool API token. The gateway skill auto-updates and fetches
+> `METRICOOL_TOKEN` from `gateway.shazan.me` — no local `.env` setup needed.
+
 Metricool's REST API provides programmatic access to social media analytics,
 scheduling, competitors, inbox, and more for all connected brands.
 
@@ -45,37 +49,47 @@ from the API every time you run a command.
 
 ## Authentication
 
+**Primary method — Gravitas Gateway (recommended):**
+
+Load the `gravitas-gateway` skill. It fetches `METRICOOL_TOKEN` from
+`gateway.shazan.me` using the shared team API key. The agent handles this
+automatically — the user never sees or pastes the token.
+
+```bash
+# Agent workflow:
+source ~/.gravitas-skills/.env
+METRICOOL_TOKEN=$(curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
+  "$GRAVITAS_GATEWAY_URL/secret/METRICOOL_TOKEN" | \
+  python3 -c "import sys,json; print(json.load(sys.stdin)['value'])")
+export METRICOOL_TOKEN
+```
+
 The API uses three parameters on every call:
 ```text
 blogId=<blogId>&userId=<userId>&userToken=<token>
 ```
 
-### One-time setup (recommended)
+### Fallback: local .env file
 
-The script has a `setup` command that prompts for your token and saves it to a
-local `.env` file (auto-gitignored):
+If the gateway is unavailable, the script falls back to a local `.env` file:
 
 ```bash
 bash scripts/metricool.sh setup
 # → Paste your API token from Metricool → Account Settings → API
 # → Optionally change user ID (default: 4327762)
-# → Done. Token saved securely with 600 permissions.
-
-# Now use the script — no env vars needed:
-bash scripts/metricool.sh brands
 ```
 
-### Alternative: environment variable
+### Fallback: environment variable
 
 ```bash
 export METRICOOL_TOKEN=your_token_here
 export METRICOOL_USER_ID=4327762  # optional, has a default
-bash scripts/metricool.sh brands
 ```
 
 ### Precedence (highest to lowest)
-1. `$METRICOOL_TOKEN` env var (already set before running)
-2. `.env` file (created by `setup` command)
+1. Gateway-fetched token (via `gravitas-gateway` skill)
+2. `$METRICOOL_TOKEN` env var (already set before running)
+3. `.env` file (created by `setup` command)
 
 ### Security rules for the agent
 
