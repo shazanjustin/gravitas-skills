@@ -127,12 +127,59 @@ When an agent loads a Gravitas skill (e.g., metricool):
 The agent never stores or logs the secret value — fetch it, use it, let it
 evaporate from context.
 
+## Per-User Credentials (Not on the Gateway)
+
+Some credentials are per-person and cannot be shared via the gateway. These
+are stored in your local `~/.gravitas-skills/.env` and set up once.
+
+### Instaloader (Instagram scraping)
+
+Instaloader uses YOUR Instagram account to scrape public data. Each team
+member needs their own session.
+
+**One-time setup — agent guides the user:**
+
+1. Check if `INSTALOADER_SESSION` is set in `~/.gravitas-skills/.env`
+2. If not set, guide the user:
+   ```bash
+   pip install instaloader
+   instaloader --login
+   # → Enter your Instagram username and password
+   # → Session saved to ~/.config/instaloader/session-<your_username>
+   ```
+3. Add the session path to `~/.gravitas-skills/.env`:
+   ```
+   INSTALOADER_SESSION=~/.config/instaloader/session-your_username
+   ```
+4. For Windows users, the path is typically:
+   ```
+   C:/Users/<name>/AppData/Local/Instaloader/session-<your_username>
+   ```
+
+Skills that use Instaloader (intel-ig-manager, gravitas-data-manager) will
+read `INSTALOADER_SESSION` from this file. If it's missing, they'll fall back
+to Apify (which uses the shared `APIFY_API_KEY` from the gateway).
+
+### Credential Precedence
+
+| Type | Source | Example |
+|------|--------|---------|
+| Shared team keys | Gateway (`gateway.shazan.me`) | METRICOOL_TOKEN, APIFY_API_KEY, Meta tokens |
+| Per-user sessions | Local `.env` file | INSTALOADER_SESSION |
+| Fallback env vars | Shell environment | `export METRICOOL_TOKEN=...` |
+
 ## Adding a New Secret
 
-When Shazan adds a new API key to the gateway:
+**Shared secret (add to gateway):**
 
-1. He adds the env var to the gateway worker (`wrangler secret put`)
-2. He updates this SKILL.md with the new secret name and mapping
-3. He pushes to GitHub → next `git pull` picks it up
+1. Add the env var to the gateway worker (`wrangler secret put`)
+2. Update this SKILL.md with the new secret name and mapping
+3. Push to GitHub → next `git pull` picks it up
 
-No other skills change. No user action needed.
+**Per-user credential (add to .env.example):**
+
+1. Add the variable to `.env.example` with a comment explaining setup
+2. Update this SKILL.md with setup instructions
+3. Push to GitHub → team members add it to their local `.env` on next pull
+
+No other skills change. No user action needed for shared secrets.
