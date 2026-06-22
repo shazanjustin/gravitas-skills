@@ -139,6 +139,7 @@ List ONLY the skills that actually exist in `~/.gravitas-skills/` (run
 > 🔑 **metricool-engagement-rate-xlsx** — per-post engagement proof workbooks (IG, TikTok, YouTube)
 > 🔑 **metricool-engagement-rate-xlsx-v2** — improved version of the above
 > 🔑 **performance-social-report-slides** — quarterly Excel → PPTX slides + thumbnail gallery
+> 🔑 **gravitas-data-manager** — full FB/IG/TikTok workflow (profile→scrape→export→cross-platform)
 > 🧩 **client-friendly-report-writer** — raw metrics → client-facing analysis
 > 🧩 **datasheet-to-gsheet-mapper** — map messy CSVs to Google Sheets columns
 > 🧩 **youtube-publish-date-bulk** — batch YouTube URLs → publish dates column
@@ -288,19 +289,20 @@ Present them as concrete options:
 What do you want to do next?
 
 🔑 Gateway-powered:
-  1. metricool — pull analytics, manage posts, check competitors
-  2. metricool-engagement-rate-xlsx — per-post ER proof workbooks
-  3. metricool-engagement-rate-xlsx-v2 — improved ER workbooks
-  4. performance-social-report-slides — quarterly Excel → PPTX
+  1. gravitas-data-manager — FB/IG/TikTok social data & competitor reports
+  2. metricool — pull analytics, manage posts, check competitors
+  3. metricool-engagement-rate-xlsx — per-post ER proof workbooks
+  4. metricool-engagement-rate-xlsx-v2 — improved ER workbooks
+  5. performance-social-report-slides — quarterly Excel → PPTX
 
 🧩 Standalone:
-  5. client-friendly-report-writer — metrics → client-ready analysis
-  6. datasheet-to-gsheet-mapper — CSV → Google Sheets columns
-  7. youtube-publish-date-bulk — batch YouTube publish dates
+  6. client-friendly-report-writer — metrics → client-ready analysis
+  7. datasheet-to-gsheet-mapper — CSV → Google Sheets columns
+  8. youtube-publish-date-bulk — batch YouTube publish dates
 
 Setup:
-  8. Configure Instaloader (personal IG session for scraping)
-  9. Done — gateway is ready when a skill needs it
+  9. Configure Instaloader (personal IG session for scraping)
+  0. Done — gateway is ready when a skill needs it
 ```
 
 ---
