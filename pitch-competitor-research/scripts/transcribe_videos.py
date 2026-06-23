@@ -2,23 +2,27 @@
 """
 Video download and transcription pipeline for competitor research.
 
-Downloads videos via yt-dlp, transcribes via Gemini API (primary)
-or OpenAI Whisper API (fallback).
+Downloads videos via yt-dlp, transcribes via OpenRouter API
+(Gemini Flash for video, or any model for text-based analysis).
 
 Usage:
     python scripts/transcribe_videos.py \\
         --posts-file outputs/pitch-2026-06-22/scrape_results.json \\
         --output-dir outputs/pitch-2026-06-22 \\
-        --gemini-key YOUR_KEY
+        --openrouter-key YOUR_KEY
 """
 import argparse
+import base64
 import json
 import os
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
+
+# OpenRouter supports Gemini Flash for video understanding
+TRANSCRIPTION_MODEL = "google/gemini-2.0-flash-001"
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
 def download_video(post_url: str, output_dir: Path) -> Path | None:
@@ -39,7 +43,6 @@ def download_video(post_url: str, output_dir: Path) -> Path | None:
             print(f"  ⚠️ Download failed: {result.stderr[:200]}", file=sys.stderr)
             return None
 
-        # Find the downloaded file
         for f in output_dir.iterdir():
             if f.suffix in (".mp4", ".webm", ".mkv", ".mov"):
                 return f
@@ -52,92 +55,99 @@ def download_video(post_url: str, output_dir: Path) -> Path | None:
         return None
 
 
-def transcribe_gemini(video_path: Path, api_key: str) -> str | None:
-    """Transcribe video using Gemini API."""
+def extract_audio(video_path: Path) -> Path | None:
+    """Extract audio from video using ffmpeg. Returns path to mp3 file."""
+    audio_path = video_path.with_suffix(".mp3")
+    cmd = [
+        "ffmpeg", "-i", str(video_path),
+        "-vn", "-ar", "16000", "-ac", "1",
+        "-b:a", "64k", "-y", str(audio_path),
+    ]
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-
-        # Upload video file
-        video_file = genai.upload_file(str(video_path))
-
-        # Wait for processing
-        while video_file.state.name == "PROCESSING":
-            time.sleep(2)
-            video_file = genai.get_file(video_file.name)
-
-        if video_file.state.name == "FAILED":
-            print(f"  ⚠️ Gemini processing failed for {video_path.name}", file=sys.stderr)
-            return None
-
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        prompt = (
-            "Transcribe this video word-for-word. "
-            "Include speaker labels if multiple speakers are present. "
-            "Return only the transcript text, no commentary."
-        )
-        response = model.generate_content([prompt, video_file])
-        return response.text if response.text else None
-
-    except ImportError:
-        print("  ⚠️ google-generativeai not installed. pip install google-generativeai", file=sys.stderr)
-        return None
-    except Exception as e:
-        print(f"  ⚠️ Gemini transcription error: {e}", file=sys.stderr)
-        return None
-    finally:
-        # Clean up uploaded file from Gemini
-        try:
-            if 'video_file' in locals():
-                genai.delete_file(video_file.name)
-        except Exception:
-            pass
-
-
-def transcribe_openai(video_path: Path, api_key: str) -> str | None:
-    """Transcribe using OpenAI Whisper API (fallback). Extract audio first."""
-    try:
-        from openai import OpenAI
-
-        # Extract audio with ffmpeg
-        audio_path = video_path.with_suffix(".mp3")
-        cmd = [
-            "ffmpeg", "-i", str(video_path),
-            "-vn", "-ar", "16000", "-ac", "1",
-            "-b:a", "64k", "-y", str(audio_path),
-        ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        if result.returncode != 0:
-            print(f"  ⚠️ Audio extraction failed: {result.stderr[:200]}", file=sys.stderr)
+        if result.returncode == 0 and audio_path.exists():
+            return audio_path
+    except Exception:
+        pass
+    return None
+
+
+def transcribe_via_openrouter(video_path: Path, api_key: str) -> str | None:
+    """
+    Transcribe video using OpenRouter with Gemini Flash.
+    Sends video as base64 in a multimodal request.
+    """
+    import requests
+
+    try:
+        # Read video and encode as base64
+        with open(video_path, "rb") as f:
+            video_bytes = f.read()
+
+        # If file is too large (>20MB), extract audio and transcribe that instead
+        if len(video_bytes) > 20 * 1024 * 1024:
+            print("  ↪ Video >20MB, extracting audio for transcription...")
+            audio_path = extract_audio(video_path)
+            if audio_path:
+                with open(audio_path, "rb") as f:
+                    video_bytes = f.read()
+                try:
+                    audio_path.unlink()
+                except Exception:
+                    pass
+            else:
+                print("  ⚠️ Audio extraction failed, trying video anyway...", file=sys.stderr)
+
+        video_b64 = base64.b64encode(video_bytes).decode("utf-8")
+        mime_type = "video/mp4" if video_path.suffix == ".mp4" else "video/webm"
+
+        payload = {
+            "model": TRANSCRIPTION_MODEL,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Transcribe this video word-for-word. Include speaker labels if multiple speakers. Return ONLY the transcript text, no commentary."
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{mime_type};base64,{video_b64}"
+                        }
+                    }
+                ]
+            }]
+        }
+
+        resp = requests.post(
+            OPENROUTER_URL,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=120,
+        )
+
+        if resp.status_code != 200:
+            print(f"  ⚠️ OpenRouter error {resp.status_code}: {resp.text[:300]}", file=sys.stderr)
             return None
 
-        client = OpenAI(api_key=api_key)
-        with open(audio_path, "rb") as audio_file:
-            transcript = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_file,
-                response_format="text",
-            )
-
-        # Clean up audio
-        try:
-            audio_path.unlink()
-        except Exception:
-            pass
-
-        return transcript if isinstance(transcript, str) else str(transcript)
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"]
+        return content.strip() if content else None
 
     except ImportError:
-        print("  ⚠️ openai not installed. pip install openai", file=sys.stderr)
+        print("  ⚠️ requests not installed. pip install requests", file=sys.stderr)
         return None
     except Exception as e:
-        print(f"  ⚠️ OpenAI transcription error: {e}", file=sys.stderr)
+        print(f"  ⚠️ Transcription error: {e}", file=sys.stderr)
         return None
 
 
-def transcribe_posts(posts: list[dict], output_dir: Path,
-                     gemini_key: str, openai_key: str = "") -> list[dict]:
-    """Transcribe all video posts. Returns posts with transcript field added."""
+def transcribe_posts(posts: list[dict], output_dir: Path, openrouter_key: str) -> list[dict]:
+    """Transcribe all video posts via OpenRouter."""
     video_dir = output_dir / "videos"
     video_dir.mkdir(parents=True, exist_ok=True)
 
@@ -146,7 +156,7 @@ def transcribe_posts(posts: list[dict], output_dir: Path,
         print("ℹ️ No video posts to transcribe.")
         return posts
 
-    print(f"\n🎬 Transcribing {len(video_posts)} videos...")
+    print(f"\n🎬 Transcribing {len(video_posts)} videos via OpenRouter ({TRANSCRIPTION_MODEL})...")
     transcribed = 0
     skipped = 0
 
@@ -160,7 +170,6 @@ def transcribe_posts(posts: list[dict], output_dir: Path,
 
         print(f"  [{i+1}/{len(video_posts)}] {post_url[:80]}...")
 
-        # Download
         video_path = download_video(post_url, video_dir)
         if not video_path:
             skipped += 1
@@ -168,22 +177,15 @@ def transcribe_posts(posts: list[dict], output_dir: Path,
             post["transcript_error"] = "Download failed"
             continue
 
-        # Transcribe (Gemini first, OpenAI fallback)
-        transcript = None
-        if gemini_key:
-            transcript = transcribe_gemini(video_path, gemini_key)
-
-        if not transcript and openai_key:
-            print(f"  ↪ Falling back to OpenAI Whisper...")
-            transcript = transcribe_openai(video_path, openai_key)
+        transcript = transcribe_via_openrouter(video_path, openrouter_key)
 
         if transcript:
             post["transcript"] = transcript
-            post["transcript_source"] = "gemini" if gemini_key and transcript else "openai"
+            post["transcript_source"] = TRANSCRIPTION_MODEL
             transcribed += 1
         else:
             post["transcript"] = None
-            post["transcript_error"] = "Transcription failed (both Gemini and OpenAI)"
+            post["transcript_error"] = "Transcription failed"
             skipped += 1
 
         # Clean up video file
@@ -200,24 +202,20 @@ def main():
     parser = argparse.ArgumentParser(description="Download and transcribe competitor videos")
     parser.add_argument("--posts-file", required=True, help="JSON file with posts from scrape")
     parser.add_argument("--output-dir", required=True, help="Output directory for videos and results")
-    parser.add_argument("--gemini-key", default="", help="Gemini API key (or set GEMINI_API_KEY env var)")
-    parser.add_argument("--openai-key", default="", help="OpenAI API key (or set OPENAI_API_KEY env var)")
+    parser.add_argument("--openrouter-key", default="", help="OpenRouter API key")
     args = parser.parse_args()
 
-    gemini_key = args.gemini_key or os.environ.get("GEMINI_API_KEY", "")
-    openai_key = args.openai_key or os.environ.get("OPENAI_API_KEY", "")
-
-    if not gemini_key and not openai_key:
-        print("❌ No API keys provided. Set GEMINI_API_KEY or OPENAI_API_KEY.", file=sys.stderr)
+    openrouter_key = args.openrouter_key or os.environ.get("OPENROUTER_API_KEY", "")
+    if not openrouter_key:
+        print("❌ No OpenRouter API key. Set OPENROUTER_API_KEY env var or pass --openrouter-key.", file=sys.stderr)
         sys.exit(1)
 
     with open(args.posts_file) as f:
         posts = json.load(f)
 
     output_dir = Path(args.output_dir)
-    posts = transcribe_posts(posts, output_dir, gemini_key, openai_key)
+    posts = transcribe_posts(posts, output_dir, openrouter_key)
 
-    # Save updated posts
     transcript_file = output_dir / "posts_with_transcripts.json"
     with open(transcript_file, "w", encoding="utf-8") as f:
         json.dump(posts, f, indent=2, ensure_ascii=False, default=str)

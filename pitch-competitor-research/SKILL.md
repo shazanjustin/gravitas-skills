@@ -3,22 +3,23 @@ name: pitch-competitor-research
 description: >
   End-to-end competitor research for Gravitas pitches. Scrapes social media
   across Facebook, Instagram, TikTok, YouTube, and LinkedIn, transcribes video
-  content, and produces an executive-brief HTML dossier covering campaigns,
-  KOLs, content themes, posting cadence, and engagement benchmarks.
+  content via OpenRouter, and produces an executive-brief HTML dossier covering
+  campaigns, KOLs, content themes, posting cadence, and engagement benchmarks.
   Use when preparing for a new business pitch and you need deep competitor
   intelligence.
 compatibility: |
-  Requires Python 3.8+, yt-dlp, google-generativeai, openai, requests,
-  supabase, openpyxl. Credentials via gravitas-gateway (gateway.shazan.me)
-  for Metricool, Apify, Supabase. Per-user: Gemini/OpenAI API keys,
-  Instaloader session. ffmpeg recommended for audio extraction.
+  Requires Python 3.8+, yt-dlp, requests, supabase, openpyxl.
+  Credentials via gravitas-gateway (gateway.shazan.me) for Metricool,
+  Apify, Supabase. Per-user: OpenRouter API key, Instaloader session.
+  ffmpeg recommended for audio extraction from large videos.
 argument-hint: "[competitor names] [platform handles]"
 ---
 
 # Pitch Competitor Research
 
 Deep competitor intelligence for winning pitches. Scrapes → transcribes →
-analyzes → outputs an executive brief you can present.
+analyzes → outputs an executive brief you can present. All AI goes through
+**OpenRouter** — one API key, access to Gemini Flash, ChatGPT, Claude.
 
 ## Phase 0: Credentials
 
@@ -52,8 +53,7 @@ Export fetched values as env vars so scripts pick them up.
 **Local credentials** (in `pitch-competitor-research/.env`, never committed):
 
 ```env
-GEMINI_API_KEY=your-key          # From https://aistudio.google.com/apikey
-OPENAI_API_KEY=your-key           # From https://platform.openai.com/api-keys
+OPENROUTER_API_KEY=your-key       # From https://openrouter.ai/keys
 INSTALOADER_SESSION=C:/Users/...  # Path to Instagram session file
 PITCH_OUTPUT_DIR=outputs/pitch-research
 ```
@@ -157,6 +157,9 @@ The orchestrator routes each platform to the correct tool:
 | YouTube | Metricool API | Channel videos with metrics |
 | LinkedIn | Metricool API | Company page posts |
 
+All AI (transcription + analysis) goes through **OpenRouter** — one API key,
+access to Gemini Flash, ChatGPT, Claude.
+
 ```bash
 python scripts/scrape_competitor.py \
   --competitors '{"Enfagrow":{"ig":"@enfagrowmy","fb":"enfagrowmy"}}' \
@@ -178,13 +181,13 @@ In quick mode, skip this phase entirely. In full mode:
 
 ### Step 4a: Check dependencies
 
-Verify `yt-dlp` and `google-generativeai` are installed:
+Verify `yt-dlp` and `requests` are installed:
 
 ```bash
-pip install yt-dlp google-generativeai openai
+pip install yt-dlp requests
 ```
 
-### Step 4b: Download & transcribe
+### Step 4b: Download & transcribe via OpenRouter
 
 ```bash
 python scripts/transcribe_videos.py \
@@ -195,10 +198,9 @@ python scripts/transcribe_videos.py \
 The script:
 1. Filters posts to videos/reels only
 2. Downloads each via yt-dlp
-3. Transcribes via Gemini API (primary)
-4. Falls back to OpenAI Whisper API if Gemini fails
-5. Cleans up temp video files
-6. Shows progress: "Transcribed 12/15 videos..."
+3. Transcribes via OpenRouter (Gemini Flash for video; extracts audio via ffmpeg for files >20MB)
+4. Cleans up temp video files
+5. Shows progress: "Transcribed 12/15 videos..."
 
 **Known limitations:**
 - Private/deleted videos will be skipped with a note
@@ -217,18 +219,20 @@ python scripts/analyze_competitor.py \
   --output-dir outputs/pitch-research/2026-06-22
 ```
 
+All analysis goes through OpenRouter (Gemini Flash by default).
+
 What it produces:
 
 | Layer | Method | Output |
 |-------|--------|--------|
-| Campaigns | Gemini clustering | Campaign name, date range, key message, hashtags |
+| Campaigns | AI clustering via OpenRouter | Campaign name, date range, key message, hashtags |
 | KOLs | Deterministic (collab + tagged) | KOL name, platforms, post count, avg ER, tier est. |
-| Content themes | Gemini from captions + transcripts | Theme distribution, tone, visual style, CTA patterns |
+| Content themes | AI from captions + transcripts | Theme distribution, tone, visual style, CTA patterns |
 | Cadence | Computed from timestamps | Posts/week by platform, best day/time |
 | Benchmarks | Computed from engagement | Avg/median ER by format + platform |
 
-If Gemini is unavailable, falls back to simple hashtag-based campaign detection
-and keyword-based theme analysis. The output notes which method was used.
+If OpenRouter is unavailable, falls back to simple hashtag-based campaign
+detection and keyword-based theme analysis. The output notes which method was used.
 
 Save analysis as `competitor_analysis.json`.
 
@@ -282,9 +286,9 @@ After a full run, the output directory contains:
 
 ```
 outputs/pitch-research/2026-06-22/
-  scrape_results.json           # Raw scrape data
-  posts_with_transcripts.json   # Posts + video transcripts
-  competitor_analysis.json      # 5-layer analysis
+  scrape_results.json              # Raw scrape data
+  posts_with_transcripts.json      # Posts + video transcripts
+  competitor_analysis.json         # 5-layer analysis
   competitor_research_report.html  # Executive brief (opens in browser)
 ```
 
@@ -295,12 +299,13 @@ outputs/pitch-research/2026-06-22/
 Install all at once:
 
 ```bash
-pip install yt-dlp google-generativeai openai requests supabase openpyxl
+pip install yt-dlp requests supabase openpyxl
 ```
 
 Additional:
-- **ffmpeg**: For audio extraction (OpenAI fallback). `choco install ffmpeg` on Windows.
+- **ffmpeg**: For audio extraction from large videos. `choco install ffmpeg` on Windows.
 - **Instaloader**: For Instagram scraping. `pip install instaloader && instaloader --login _notakaki`
+- **OpenRouter**: https://openrouter.ai/keys — one API key for all AI models
 
 ---
 
@@ -310,8 +315,8 @@ Additional:
 |--------|---------|
 | `scripts/discover_competitors.py` | Validate handles, discover missing accounts |
 | `scripts/scrape_competitor.py` | Multi-platform scraping orchestrator |
-| `scripts/transcribe_videos.py` | yt-dlp download + Gemini/OpenAI transcription |
-| `scripts/analyze_competitor.py` | 5-layer AI analysis (campaigns, KOLs, themes, cadence, benchmarks) |
+| `scripts/transcribe_videos.py` | yt-dlp download + OpenRouter transcription (Gemini Flash) |
+| `scripts/analyze_competitor.py` | 5-layer AI analysis via OpenRouter |
 | `scripts/generate_html_report.py` | Executive brief HTML generation |
 
 All scripts accept `--help` for full argument lists.
