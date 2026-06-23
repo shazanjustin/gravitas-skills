@@ -318,6 +318,7 @@ The agent uses this table to know which secret to fetch when a skill loads:
 | `metricool-engagement-rate-xlsx-v2` | `METRICOOL_TOKEN` | `GET /secret/METRICOOL_TOKEN` |
 | `performance-social-report-slides` | `METRICOOL_TOKEN` | `GET /secret/METRICOOL_TOKEN` |
 | `gravitas-data-manager` | `APIFY_API_KEY` + Meta token + `METRICOOL_TOKEN` + `SUPABASE_SERVICE_ROLE_KEY` | `GET /secret/APIFY_API_KEY` + `GET /token` + `GET /secret/METRICOOL_TOKEN` + `GET /secret/SUPABASE_SERVICE_ROLE_KEY` |
+| `pitch-competitor-research` | `APIFY_API_KEY` + Meta token + `METRICOOL_TOKEN` + `SUPABASE_SERVICE_ROLE_KEY` | `GET /secret/APIFY_API_KEY` + `GET /token` + `GET /secret/METRICOOL_TOKEN` + `GET /secret/SUPABASE_SERVICE_ROLE_KEY` |
 | `fb-ig-engagement-xlsx` | Meta token | `GET /token` |
 
 > **Note:** `intel-ig-manager` and the old `gravitas-data-manager` have been merged
