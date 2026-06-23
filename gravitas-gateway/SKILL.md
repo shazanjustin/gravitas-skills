@@ -318,7 +318,7 @@ The agent uses this table to know which secret to fetch when a skill loads:
 | `metricool-engagement-rate-xlsx-v2` | `METRICOOL_TOKEN` | `GET /secret/METRICOOL_TOKEN` |
 | `performance-social-report-slides` | `METRICOOL_TOKEN` | `GET /secret/METRICOOL_TOKEN` |
 | `gravitas-data-manager` | `APIFY_API_KEY` + Meta token + `METRICOOL_TOKEN` + `SUPABASE_SERVICE_ROLE_KEY` | `GET /secret/APIFY_API_KEY` + `GET /token` + `GET /secret/METRICOOL_TOKEN` + `GET /secret/SUPABASE_SERVICE_ROLE_KEY` |
-| `pitch-competitor-research` | `APIFY_API_KEY` + Meta token + `METRICOOL_TOKEN` + `SUPABASE_SERVICE_ROLE_KEY` | `GET /secret/APIFY_API_KEY` + `GET /token` + `GET /secret/METRICOOL_TOKEN` + `GET /secret/SUPABASE_SERVICE_ROLE_KEY` |
+| `pitch-competitor-research` | `APIFY_API_KEY` + Meta token + `METRICOOL_TOKEN` + `SUPABASE_SERVICE_ROLE_KEY` + `OPENROUTER_API_KEY` | `GET /secret/APIFY_API_KEY` + `GET /token` + `GET /secret/METRICOOL_TOKEN` + `GET /secret/SUPABASE_SERVICE_ROLE_KEY` + `GET /secret/OPENROUTER_API_KEY` |
 | `fb-ig-engagement-xlsx` | Meta token | `GET /token` |
 
 > **Note:** `intel-ig-manager` and the old `gravitas-data-manager` have been merged
@@ -333,7 +333,7 @@ The agent uses this table to know which secret to fetch when a skill loads:
 
 | Endpoint | Returns |
 |----------|---------|
-| `GET /secrets` | `{"secrets": ["METRICOOL_TOKEN", "APIFY_API_KEY", "SUPABASE_SERVICE_ROLE_KEY"]}` — available secret names only |
+| `GET /secrets` | `{"secrets": ["METRICOOL_TOKEN", "APIFY_API_KEY", "SUPABASE_SERVICE_ROLE_KEY", "OPENROUTER_API_KEY"]}` — available secret names only |
 | `GET /secret/:name` | `{"name": "...", "value": "..."}` — full secret value |
 
 ### Meta Graph API (Facebook / Instagram)

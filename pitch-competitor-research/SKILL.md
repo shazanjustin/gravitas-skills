@@ -46,6 +46,10 @@ curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
 # Meta token (official insights if needed)
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
   "$GRAVITAS_GATEWAY_URL/token"
+
+# OpenRouter API key (transcription + AI analysis)
+curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
+  "$GRAVITAS_GATEWAY_URL/secret/OPENROUTER_API_KEY"
 ```
 
 Export fetched values as env vars so scripts pick them up.
@@ -53,7 +57,6 @@ Export fetched values as env vars so scripts pick them up.
 **Local credentials** (in `pitch-competitor-research/.env`, never committed):
 
 ```env
-OPENROUTER_API_KEY=your-key       # From https://openrouter.ai/keys
 INSTALOADER_SESSION=C:/Users/...  # Path to Instagram session file
 PITCH_OUTPUT_DIR=outputs/pitch-research
 ```
