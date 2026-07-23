@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fill LinkedIn Content Types"
+  short_description: "Complete missing LinkedIn post format labels"
+  default_prompt: "Use $fill-linkedin-content-types to identify and fill the missing content types in my LinkedIn raw data file."
