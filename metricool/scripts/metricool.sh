@@ -46,13 +46,21 @@
 
 set -euo pipefail
 
+# Resolve the Python binary once -- most modern distros/containers only ship
+# `python3`, not a bare `python` alias (broke every call of this script on
+# the ev-discord container, which has python3 but no python symlink).
+PYTHON_BIN="$(command -v python3 || command -v python || true)"
+if [ -z "$PYTHON_BIN" ]; then
+    echo "metricool.sh: no python3 or python found on PATH" >&2
+fi
+
 BASE_URL="https://app.metricool.com/api"
 SWAGGER_URL="https://app.metricool.com/api/swagger.json"
-SWAGGER_CACHE="${METRICOOL_CACHE_DIR:-$(python -c "import tempfile; print(tempfile.gettempdir().replace(chr(92), '/') + '/metricool_swagger.json')" 2>/dev/null || echo /tmp/metricool_swagger.json)}"
+SWAGGER_CACHE="${METRICOOL_CACHE_DIR:-$($PYTHON_BIN -c "import tempfile; print(tempfile.gettempdir().replace(chr(92), '/') + '/metricool_swagger.json')" 2>/dev/null || echo /tmp/metricool_swagger.json)}"
 
 # ISO datetime defaults (last 30 days)
-DEFAULT_FROM=$(python -c "from datetime import datetime, timedelta; print((datetime.now()-timedelta(days=30)).strftime('%Y-%m-%dT00:00:00'))" 2>/dev/null || echo "rolling")
-DEFAULT_TO=$(python -c "from datetime import datetime; print(datetime.now().strftime('%Y-%m-%dT23:59:59'))" 2>/dev/null || echo "today")
+DEFAULT_FROM=$($PYTHON_BIN -c "from datetime import datetime, timedelta; print((datetime.now()-timedelta(days=30)).strftime('%Y-%m-%dT00:00:00'))" 2>/dev/null || echo "rolling")
+DEFAULT_TO=$($PYTHON_BIN -c "from datetime import datetime; print(datetime.now().strftime('%Y-%m-%dT23:59:59'))" 2>/dev/null || echo "today")
 
 METRICOOL_TOKEN="${METRICOOL_TOKEN:-}"
 METRICOOL_USER_ID="${METRICOOL_USER_ID:-4327762}"
@@ -98,7 +106,7 @@ api_get() {
 }
 
 pretty() {
-    python -m json.tool 2>/dev/null || python -c "import sys,json; print(json.dumps(json.load(sys.stdin), indent=2, default=str))" 2>/dev/null || cat
+    $PYTHON_BIN -m json.tool 2>/dev/null || $PYTHON_BIN -c "import sys,json; print(json.dumps(json.load(sys.stdin), indent=2, default=str))" 2>/dev/null || cat
 }
 
 # Get brand info JSON, return as base64 for safe piping
@@ -113,7 +121,7 @@ has_network() {
     local target="$2"  # lowercase, e.g. "instagram", "facebook"
     local data
     data=$(fetch_brand_info "$blog_id")
-    python -c "
+    $PYTHON_BIN -c "
 import sys, json
 d = json.loads('''${data//\'/\'\"\'\"\'}''').get('data', {})
 nd = d.get('networksData', {})
@@ -130,7 +138,7 @@ get_networks() {
     local blog_id="$1"
     local data
     data=$(fetch_brand_info "$blog_id")
-    python -c "
+    $PYTHON_BIN -c "
 import sys, json
 d = json.loads('''${data//\'/\'\"\'\"\'}''').get('data', {})
 nd = d.get('networksData', {})
@@ -146,7 +154,7 @@ get_network_names() {
     local blog_id="$1"
     local data
     data=$(fetch_brand_info "$blog_id")
-    python -c "
+    $PYTHON_BIN -c "
 import sys, json
 d = json.loads('''${data//\'/\'\"\'\"\'}''').get('data', {})
 nd = d.get('networksData', {})
@@ -162,7 +170,7 @@ brands_with_network() {
     check_token
     local brands_json
     brands_json=$(api_get "/admin/simpleProfiles" "")
-    python -c "
+    $PYTHON_BIN -c "
 import sys, json
 import urllib.request, base64
 
@@ -183,7 +191,7 @@ get_swagger() {
     # Check cache age (max 1 hour)
     if [ -f "$SWAGGER_CACHE" ]; then
         local age
-        age=$(python -c "import os, time; print(int(time.time() - os.path.getmtime('${SWAGGER_CACHE}')))" 2>/dev/null)
+        age=$($PYTHON_BIN -c "import os, time; print(int(time.time() - os.path.getmtime('${SWAGGER_CACHE}')))" 2>/dev/null)
         if [ -n "$age" ] && [ "$age" -lt 3600 ]; then
             cat "$SWAGGER_CACHE"
             return
@@ -203,7 +211,7 @@ cmd_brands() {
     local raw
     raw=$(api_get "/admin/simpleProfiles" "")
     local b64
-    b64=$(echo "$raw" | python -c "import sys,base64; print(base64.b64encode(sys.stdin.buffer.read()).decode())")
+    b64=$(echo "$raw" | $PYTHON_BIN -c "import sys,base64; print(base64.b64encode(sys.stdin.buffer.read()).decode())")
     pydata "$b64" <<- 'PYEOF'
 		items = json_data if isinstance(json_data, list) else json_data.get('brands', json_data.get('data', []))
 		for b in items:
@@ -223,7 +231,7 @@ cmd_info() {
     local raw
     raw=$(fetch_brand_info "$blog_id")
     local b64
-    b64=$(echo "$raw" | python -c "import sys,base64; print(base64.b64encode(sys.stdin.buffer.read()).decode())")
+    b64=$(echo "$raw" | $PYTHON_BIN -c "import sys,base64; print(base64.b64encode(sys.stdin.buffer.read()).decode())")
     pydata "$b64" <<- 'PYEOF'
 		d = json_data.get('data', {})
 		print(f'  Name:     {d.get("label", "?")}')
@@ -343,8 +351,8 @@ cmd_scheduled() {
         echo "Usage: scheduled <blogId> [from] [to]" >&2
         return 1
     fi
-    local from="${2:-$(python -c "from datetime import datetime; print(datetime.now().strftime('%Y-%m-%dT00:00:00'))" 2>/dev/null)}"
-    local to="${3:-$(python -c "from datetime import datetime, timedelta; print((datetime.now()+timedelta(days=30)).strftime('%Y-%m-%dT23:59:59'))" 2>/dev/null)}"
+    local from="${2:-$($PYTHON_BIN -c "from datetime import datetime; print(datetime.now().strftime('%Y-%m-%dT00:00:00'))" 2>/dev/null)}"
+    local to="${3:-$($PYTHON_BIN -c "from datetime import datetime, timedelta; print((datetime.now()+timedelta(days=30)).strftime('%Y-%m-%dT23:59:59'))" 2>/dev/null)}"
     echo "=== Scheduled Posts (${from} to ${to}) ===" >&2
     api_get "/v2/scheduler/posts" "$blog_id" "from=${from}&to=${to}" | pretty
 }
@@ -396,7 +404,7 @@ cmd_summary() {
     local raw
     raw=$(fetch_brand_info "$blog_id")
     local b64
-    b64=$(echo "$raw" | python -c "import sys,base64; print(base64.b64encode(sys.stdin.buffer.read()).decode())")
+    b64=$(echo "$raw" | $PYTHON_BIN -c "import sys,base64; print(base64.b64encode(sys.stdin.buffer.read()).decode())")
 
     echo "============================================" >&2
     echo "  Metricool Summary" >&2
@@ -443,13 +451,13 @@ cmd_export() {
     local safe_from="${from%%T*}"
     local safe_to="${to%%T*}"
     local ts
-    ts=$(python -c "from datetime import datetime; print(datetime.now().strftime('%Y%m%d_%H%M%S'))")
+    ts=$($PYTHON_BIN -c "from datetime import datetime; print(datetime.now().strftime('%Y%m%d_%H%M%S'))")
     local outfile="metricool_export_${blog_id}_${ts}.json"
 
     echo "Exporting blog ${blog_id} (${from} to ${to})..." >&2
     echo "Output: ${outfile}" >&2
 
-    python -c "
+    $PYTHON_BIN -c "
 import json, subprocess, sys, os
 
 blog_id = '${blog_id}'
@@ -533,7 +541,7 @@ cmd_swagger() {
     case "$mode" in
         --list|-l)
             echo "=== Metricool API Services ===" >&2
-            python -c "
+            $PYTHON_BIN -c "
 import json
 with open('${cache}') as f:
     spec = json.load(f)
@@ -555,7 +563,7 @@ for t in all_tags:
                 return 1
             fi
             echo "=== Searching for \"$query\" in API spec ===" >&2
-            python -c "
+            $PYTHON_BIN -c "
 import json
 with open('${cache}') as f:
     spec = json.load(f)
@@ -586,7 +594,7 @@ if found == 0:
                 return 1
             fi
             echo "=== Endpoints for service: $service ===" >&2
-            python -c "
+            $PYTHON_BIN -c "
 import json
 with open('${cache}') as f:
     spec = json.load(f)
@@ -693,7 +701,7 @@ cmd_setup() {
 
     chmod 600 "$env_file" 2>/dev/null || true
     echo "" >&2
-    echo "✅ Token saved to $(python -c "import os; print(os.path.relpath('${env_file}'))" 2>/dev/null || echo "$env_file")" >&2
+    echo "✅ Token saved to $($PYTHON_BIN -c "import os; print(os.path.relpath('${env_file}'))" 2>/dev/null || echo "$env_file")" >&2
     echo "   File permissions set to 600 (owner read/write only)." >&2
     echo "" >&2
     echo "Run 'brands' to verify it works:" >&2
@@ -704,7 +712,7 @@ cmd_setup() {
 pydata() {
     local b64json="$1"
     shift
-    python -c "
+    $PYTHON_BIN -c "
 import json, base64, sys
 json_data = json.loads(base64.b64decode('${b64json}').decode('utf-8'))
 $(cat)
