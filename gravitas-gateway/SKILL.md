@@ -220,9 +220,19 @@ curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
 ### 5c: Test Meta Graph API token endpoint
 
 ```bash
-curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
-  "$GRAVITAS_GATEWAY_URL/token" | grep -q 'page_access_token' && echo "OK" || echo "FAIL"
+RESP=$(curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" "$GRAVITAS_GATEWAY_URL/token")
+if echo "$RESP" | grep -q 'page_access_token'; then
+  echo "OK"
+elif echo "$RESP" | grep -q 'OAuthException'; then
+  echo "META_TOKEN_NEEDS_REFRESH"
+else
+  echo "FAIL"
+fi
 ```
+
+If this prints `META_TOKEN_NEEDS_REFRESH`, the gateway key is valid but the
+underlying Facebook source token must be renewed in the Worker secret/KV before
+official FB/IG endpoints can be used.
 
 ### 5d: Summarize
 
@@ -341,7 +351,7 @@ The agent uses this table to know which secret to fetch when a skill loads:
 
 | Endpoint | Returns |
 |----------|---------|
-| `GET /token` | `{"page_access_token": "...", "page_id": "...", "expires_at": ...}` — verified live 2026-08-12. It does **not** return `access_token`; scripts must read `page_access_token`. |
+| `GET /token` | When Meta auth is configured: `{"page_access_token": "...", "page_id": "...", "expires_at": ...}`. It does **not** return `access_token`; scripts must read `page_access_token`. If it returns an OAuthException/code 190, renew the underlying Facebook source token first. |
 | `GET /pages` | `{"pages": [...]}` with page IDs, names, and linked Instagram business accounts. Page access tokens are intentionally omitted. |
 | `GET /thumbnail?platform=fb\|ig&post_id=<id>` | `{"thumbnail_url": "..."}` |
 | `GET /comments?platform=fb\|ig&post_id=<id>` | Comments array for a post |
