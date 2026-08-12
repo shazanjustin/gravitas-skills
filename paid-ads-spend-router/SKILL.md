@@ -47,30 +47,57 @@ source ~/.gravitas-skills/.env
 
 ```bash
 TOKEN=$(curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
-  "$GRAVITAS_GATEWAY_URL/token" | python -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+  "$GRAVITAS_GATEWAY_URL/token" | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
 ```
 
 3. Discover accessible ad accounts when the user gives shorthand like SP/SKP or
 MY/SG. Known current accounts include `SP MY`, `SKP MY`, `SP SG`, and `SKP SG`,
 but still discover instead of hardcoding when possible.
 
+Two traps confirmed against the live token on 2026-08-12, both of which the
+discovery step surfaces and a hardcoded list would hide:
+
+- **"SP MY" matches more than one account.** There is a separate
+  `SP MY - Lazada SEA CPAS` account alongside plain `SP MY`. A substring match
+  on "SP MY" hits both. Ask which one is meant, per the shorthand rule in
+  Safety rules — CPAS spend is a different commercial thing from BAU spend.
+- **Markets do not share a currency.** The MY accounts bill in **MYR** and the
+  SG accounts in **SGD**. `spend` comes back as a bare number with no currency
+  attached, so a cross-market request ("SP and SKP, MY and SG") must never be
+  summed into one figure.
+
 ```bash
 curl -s "https://graph.facebook.com/v25.0/me/adaccounts?fields=id,account_id,name,currency,account_status&limit=100&access_token=$TOKEN" \
-  | python -c 'import json,sys; d=json.load(sys.stdin); cols=["id","name","currency","account_status"]; [print("\t".join(str(a.get(k,"")) for k in cols)) for a in d.get("data", [])]'
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); cols=["id","name","currency","account_status"]; [print("\t".join(str(a.get(k,"")) for k in cols)) for a in d.get("data", [])]'
 ```
 
 4. Query spend through `/act_ACCOUNT_ID/insights`. Use `time_range` for exact
 dates and `time_increment=monthly` or `1` only when the user asks for a monthly
 or daily breakdown.
 
+`curl -g` is **required** here, not optional. `time_range={"since":...,"until":...}`
+contains braces with a comma, which curl treats as a URL glob: without `-g` it
+silently fires *two* requests with an empty `time_range`, Meta rejects both with
+`(#100) param time_range must be non-empty`, and the two error documents arrive
+concatenated so the JSON parse fails with "Extra data" rather than anything that
+points at the real cause.
+
 ```bash
-curl -s "https://graph.facebook.com/v25.0/act_ACCOUNT_ID/insights?fields=account_id,account_name,spend,impressions,reach,clicks,cpc,cpm,ctr&time_range={\"since\":\"YYYY-MM-DD\",\"until\":\"YYYY-MM-DD\"}&time_increment=monthly&access_token=$TOKEN" \
-  | python -c 'import json,sys; d=json.load(sys.stdin); cols=["account_name","date_start","date_stop","spend","impressions","reach","clicks","cpc","cpm","ctr"]; [print("\t".join(str(r.get(k,"")) for k in cols)) for r in d.get("data", [])]'
+curl -s -g "https://graph.facebook.com/v25.0/act_ACCOUNT_ID/insights?fields=account_id,account_name,account_currency,spend,impressions,reach,clicks,cpc,cpm,ctr&time_range={\"since\":\"YYYY-MM-DD\",\"until\":\"YYYY-MM-DD\"}&time_increment=monthly&access_token=$TOKEN" \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); cols=["account_name","account_currency","date_start","date_stop","spend","impressions","reach","clicks","cpc","cpm","ctr"]; [print("\t".join(str(r.get(k,"")) for k in cols)) for r in d.get("data", [])]'
 ```
+
+Add `account_currency` to `fields` whenever more than one account is being
+reported, and print the figure with its currency. Never add spend across
+accounts that do not share one.
 
 5. For campaign/adset/campaign-name breakdowns, query the same insights edge with
 `level=campaign` or `level=adset` and include `campaign_name` / `adset_name`.
 Follow pagination when a response has more pages.
+
+6. Meta clamps `until` to today. A range ending in the future comes back with
+`date_stop` set to today, not the date asked for — report the range actually
+covered rather than the one requested, or a partial month reads as a full one.
 
 ## Phase 3: Planned budget / sheet path
 
@@ -93,3 +120,10 @@ Never blend planned and actual spend without labeling both.
 - If Meta returns no account for the requested brand, say access is missing; do
   not switch to Drive/Sheets and present a planned budget as actual spend.
 - Keep Discord output as numbered bullets, not pipe tables.
+- Use `python3`, never bare `python`. The ev-discord image installs python3 only,
+  so `python` fails with "command not found" — and because these snippets assign
+  through a pipeline, `TOKEN` silently becomes the error text instead of a token,
+  turning a missing interpreter into a confusing auth failure several calls later.
+- Pass `-g` to every curl whose URL contains `{...}`. See the note above the
+  insights call: without it the request is glob-expanded and fails in a way whose
+  error message points nowhere near the actual problem.
