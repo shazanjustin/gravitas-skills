@@ -221,7 +221,7 @@ curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
 
 ```bash
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
-  "$GRAVITAS_GATEWAY_URL/token" | grep -q 'access_token' && echo "OK" || echo "FAIL"
+  "$GRAVITAS_GATEWAY_URL/token" | grep -q 'page_access_token' && echo "OK" || echo "FAIL"
 ```
 
 ### 5d: Summarize
@@ -317,13 +317,14 @@ The agent uses this table to know which secret to fetch when a skill loads:
 | `metricool-engagement-rate-xlsx` | `METRICOOL_TOKEN` | `GET /secret/METRICOOL_TOKEN` |
 | `metricool-engagement-rate-xlsx-v2` | `METRICOOL_TOKEN` | `GET /secret/METRICOOL_TOKEN` |
 | `performance-social-report-slides` | `METRICOOL_TOKEN` | `GET /secret/METRICOOL_TOKEN` |
-| `gravitas-data-manager` | `APIFY_API_KEY` + Meta token + `METRICOOL_TOKEN` + `SUPABASE_SERVICE_ROLE_KEY` | `GET /secret/APIFY_API_KEY` + `GET /token` + `GET /secret/METRICOOL_TOKEN` + `GET /secret/SUPABASE_SERVICE_ROLE_KEY` |
-| `pitch-competitor-research` | `APIFY_API_KEY` + Meta token + `METRICOOL_TOKEN` + `SUPABASE_SERVICE_ROLE_KEY` + `OPENROUTER_API_KEY` | `GET /secret/APIFY_API_KEY` + `GET /token` + `GET /secret/METRICOOL_TOKEN` + `GET /secret/SUPABASE_SERVICE_ROLE_KEY` + `GET /secret/OPENROUTER_API_KEY` |
-| `fb-ig-engagement-xlsx` | Meta token | `GET /token` |
+| `gravitas-data-manager` | `APIFY_API_KEY` + page Meta token + `METRICOOL_TOKEN` | `GET /secret/APIFY_API_KEY` + `GET /token` + `GET /secret/METRICOOL_TOKEN` |
+| `pitch-competitor-research` | `APIFY_API_KEY` + page Meta token + `METRICOOL_TOKEN` | `GET /secret/APIFY_API_KEY` + `GET /token` + `GET /secret/METRICOOL_TOKEN` |
+| `fb-ig-engagement-xlsx` | Page Meta token | `GET /token` |
 
 > **Note:** `intel-ig-manager` and the old `gravitas-data-manager` have been merged
 > into a single `gravitas-data-manager` skill that owns all FB/IG/TikTok workflows.
-> Supabase credentials moved to gateway — no more hardcoded service-role keys.
+> As of 2026-08-12 the live gateway exposes only `METRICOOL_TOKEN`, `APIFY_API_KEY`,
+> and the page Meta token endpoint above.
 
 ---
 
@@ -333,15 +334,15 @@ The agent uses this table to know which secret to fetch when a skill loads:
 
 | Endpoint | Returns |
 |----------|---------|
-| `GET /secrets` | `{"secrets": ["METRICOOL_TOKEN", "APIFY_API_KEY", "SUPABASE_SERVICE_ROLE_KEY", "OPENROUTER_API_KEY"]}` — available secret names only |
+| `GET /secrets` | `{"secrets": ["METRICOOL_TOKEN", "APIFY_API_KEY"]}` — available secret names only, verified live 2026-08-12 |
 | `GET /secret/:name` | `{"name": "...", "value": "..."}` — full secret value |
 
 ### Meta Graph API (Facebook / Instagram)
 
 | Endpoint | Returns |
 |----------|---------|
-| `GET /token` | `{"access_token": "..."}` — verified live 2026-08-05; older docs/scripts may still expect `page_access_token`/`page_id`/`expires_at`, which are **not** present in the real response. Always read whatever key is actually there (`list(resp.keys())`) rather than assuming the field name. |
-| `GET /pages` | List of Facebook pages with linked Instagram business accounts |
+| `GET /token` | `{"page_access_token": "...", "page_id": "...", "expires_at": ...}` — verified live 2026-08-12. It does **not** return `access_token`; scripts must read `page_access_token`. |
+| `GET /pages` | `{"pages": [...]}` with page IDs, names, and linked Instagram business accounts. Page access tokens are intentionally omitted. |
 | `GET /thumbnail?platform=fb\|ig&post_id=<id>` | `{"thumbnail_url": "..."}` |
 | `GET /comments?platform=fb\|ig&post_id=<id>` | Comments array for a post |
 
@@ -356,41 +357,11 @@ explicitly:
 req = urllib.request.Request(url, headers={"x-api-key": KEY, "User-Agent": "curl/8.4.0"})
 ```
 
-### Meta Marketing API (Ads/Campaigns) — via the same `/token` access token
+### Meta Marketing API (Ads/Campaigns)
 
-The token from `GET /token` is a full user access token (app "Gravitas
-Automation"), good for both organic Graph API calls above **and** the
-Marketing API (campaigns/adsets/ads) — no separate ads token needed.
-
-**List accessible ad accounts** (paginate via `paging.next`, don't assume one page):
-```
-GET https://graph.facebook.com/v25.0/me/adaccounts?fields=id,account_id,name,currency,account_status&access_token=$TOKEN
-```
-As of 2026-08-05 this token can see 10 ad accounts: `7DAYS x Gravitas`,
-`Treatz Social Media Malaysia`, `SP SG`, `Level Infinite`, `SKP SG`, `SP MY`,
-`SKP MY`, `Changemakers`, `NTUC First Campus (Section)`, and a personal
-account. **None of these is Friso Gold** — if asked for Friso Gold ad
-performance, say so directly rather than searching further; either Friso
-Gold has no Meta ad spend, or its ad account lives under a different
-Business Manager not connected to this app.
-
-**List currently-running campaigns/ads** — real incident, fixed here so it
-doesn't get re-derived from scratch: `effective_status` is a **plain query
-parameter taking a JSON array**, not a field inside the generic `filtering`
-param. The `filtering=[{"field":"effective_status",...}]` shape (documented
-for some other Graph API edges) returns a 400 here.
-```
-GET /act_<ACCOUNT_ID>/campaigns?fields=id,name,objective,effective_status,daily_budget,lifetime_budget,start_time,stop_time&effective_status=["ACTIVE"]&access_token=$TOKEN
-GET /act_<ACCOUNT_ID>/ads?fields=id,name,effective_status,campaign_id,adset_id&effective_status=["ACTIVE"]&access_token=$TOKEN
-```
-Same `effective_status` param works on `/adsets` too. Several of the 10
-accounts above have 100+ active campaigns/ads — always pass `limit=100` (or
-higher) and follow `paging.next`, don't assume a single page covers
-everything.
-
-**`delivery_status` is not a real field** on Campaign/AdSet/Ad objects — it
-doesn't exist and 400s with `(#100) Tried accessing nonexisting field`. The
-field that actually carries this information is `effective_status`.
+Do not use `GET /token` for Ads Manager / Marketing API work. The live endpoint
+returns a page token for organic FB/IG access, not a user ads token. Ads access
+needs a separate scoped broker/key before this skill should document it again.
 
 ### Per-User Credentials (Local .env)
 

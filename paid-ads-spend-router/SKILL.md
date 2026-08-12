@@ -1,10 +1,9 @@
 ---
 name: paid-ads-spend-router
-description: Route Gravitas paid media questions correctly. Use when the user asks about ad spend, paid ads, media spend, campaign spend, Meta Ads/Facebook Ads/Instagram Ads, actual spend vs planned budget, SP/SKP MY/SG ad accounts, or paid-media performance breakdowns. Forces a clarification when spend could mean either live platform spend or budget/media-plan sheets, then uses Meta Marketing API via gravitas-gateway for actual Meta spend and Drive/Sheets only for planned budgets or trackers.
+description: Route Gravitas paid media questions correctly. Use when the user asks about ad spend, paid ads, media spend, campaign spend, Meta Ads/Facebook Ads/Instagram Ads, actual spend vs planned budget, SP/SKP MY/SG ad accounts, or paid-media performance breakdowns. Forces a clarification when spend could mean either live platform spend or budget/media-plan sheets. Planned budgets can use Drive/Sheets; actual Meta spend is blocked until a separate scoped ads gateway exists.
 compatibility: |
-  Requires gravitas-gateway and curl. Meta access token comes from
-  gateway.shazan.me `GET /token`; never print raw Graph API responses because
-  paging URLs can contain access tokens.
+  Requires gravitas-gateway and curl. As of 2026-08-12, gateway.shazan.me
+  `GET /token` returns a page token, not a Marketing API user token.
 argument-hint: "[brand/account] [date range] [actual spend or planned budget]"
 ---
 
@@ -33,25 +32,19 @@ Skip the clarification only when the wording clearly names the source:
 
 ## Phase 2: Actual Meta spend path
 
-For actual Facebook/Instagram/Meta paid spend, load `gravitas-gateway` first and
-use the Meta Marketing API token from the gateway. Do **not** use Drive/Sheets as
-the first source for actual spend.
+For actual Facebook/Instagram/Meta paid spend, stop and say the live gateway no
+longer exposes a Marketing API user token. `GET /token` returns
+`page_access_token`, `page_id`, and `expires_at` for organic FB/IG access only.
+Do **not** try to use that token against `/me/adaccounts`, and do **not** switch
+to Drive/Sheets as if it were actual platform spend.
 
-1. Source gateway env:
+Needed fix before this path can run again: create a separate scoped ads gateway
+Worker/key for Marketing API access, then update this skill with that endpoint.
 
-```bash
-source ~/.gravitas-skills/.env
-```
+Historical notes to preserve when the scoped ads gateway exists:
 
-2. Fetch the token safely. Do not print it.
-
-```bash
-TOKEN=$(curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
-  "$GRAVITAS_GATEWAY_URL/token" | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
-```
-
-3. Discover accessible ad accounts when the user gives shorthand like SP/SKP or
-MY/SG. Known current accounts include `SP MY`, `SKP MY`, `SP SG`, and `SKP SG`,
+Discover accessible ad accounts when the user gives shorthand like SP/SKP or
+MY/SG. Known current accounts included `SP MY`, `SKP MY`, `SP SG`, and `SKP SG`,
 but still discover instead of hardcoding when possible.
 
 Two traps confirmed against the live token on 2026-08-12, both of which the
