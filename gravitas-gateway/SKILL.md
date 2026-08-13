@@ -217,13 +217,17 @@ curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
   "$GRAVITAS_GATEWAY_URL/secret/$SECRET_NAME" | grep -q '"value"' && echo "OK" || echo "FAIL"
 ```
 
-### 5c: Test Meta Graph API token endpoint
+### 5c: Test Meta account discovery
 
 ```bash
-RESP=$(curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" "$GRAVITAS_GATEWAY_URL/token")
-if echo "$RESP" | grep -q 'page_access_token'; then
-  echo "OK"
-elif echo "$RESP" | grep -q 'OAuthException'; then
+RESP_FILE=$(mktemp)
+PYTHON_BIN=$(command -v python3 || command -v python)
+trap 'rm -f "$RESP_FILE"' EXIT
+if curl -sS --fail-with-body -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
+  "$GRAVITAS_GATEWAY_URL/pages" > "$RESP_FILE"; then
+  "$PYTHON_BIN" -c 'import json,sys; d=json.load(open(sys.argv[1])); assert isinstance(d.get("pages"),list) and d["pages"], "no pages returned"; assert "access_token" not in json.dumps(d), "token leaked"' "$RESP_FILE" \
+    && echo "OK" || echo "FAIL"
+elif grep -q 'OAuthException' "$RESP_FILE"; then
   echo "META_TOKEN_NEEDS_REFRESH"
 else
   echo "FAIL"
@@ -232,7 +236,9 @@ fi
 
 If this prints `META_TOKEN_NEEDS_REFRESH`, the gateway key is valid but the
 underlying Facebook source token must be renewed in the Worker secret/KV before
-official FB/IG endpoints can be used.
+official FB/IG endpoints can be used. Do not use `/token` as the health check:
+it is a stateful legacy single-page endpoint and may return either a selected
+page token or `409 multiple_pages_found`.
 
 ### 5d: Summarize
 
@@ -252,7 +258,7 @@ Present a clean table:
      Endpoints      Status
      ─────────      ──────
      GET /secrets      ✅ 200
-     GET /token         ✅ 200 (Meta Graph API ready)
+     GET /pages        ✅ 200 (Meta account discovery ready)
 ```
 
 ---
@@ -327,14 +333,14 @@ The agent uses this table to know which secret to fetch when a skill loads:
 | `metricool-engagement-rate-xlsx` | `METRICOOL_TOKEN` | `GET /secret/METRICOOL_TOKEN` |
 | `metricool-engagement-rate-xlsx-v2` | `METRICOOL_TOKEN` | `GET /secret/METRICOOL_TOKEN` |
 | `performance-social-report-slides` | `METRICOOL_TOKEN` | `GET /secret/METRICOOL_TOKEN` |
-| `gravitas-data-manager` | `APIFY_API_KEY` + page Meta token + `METRICOOL_TOKEN` | `GET /secret/APIFY_API_KEY` + `GET /token` + `GET /secret/METRICOOL_TOKEN` |
-| `pitch-competitor-research` | `APIFY_API_KEY` + page Meta token + `METRICOOL_TOKEN` | `GET /secret/APIFY_API_KEY` + `GET /token` + `GET /secret/METRICOOL_TOKEN` |
-| `fb-ig-engagement-xlsx` | Page Meta token | `GET /token` |
+| `gravitas-data-manager` | `APIFY_API_KEY` + `METRICOOL_TOKEN`; Meta account discovery | `GET /secret/APIFY_API_KEY` + `GET /secret/METRICOOL_TOKEN` + `GET /pages` |
+| `pitch-competitor-research` | `APIFY_API_KEY` + `METRICOOL_TOKEN` | `GET /secret/APIFY_API_KEY` + `GET /secret/METRICOOL_TOKEN` |
+| `fb-ig-engagement-xlsx` | Official Meta export until a scoped read-only proxy exists | No usable multi-page token endpoint |
 
 > **Note:** `intel-ig-manager` and the old `gravitas-data-manager` have been merged
 > into a single `gravitas-data-manager` skill that owns all FB/IG/TikTok workflows.
-> As of 2026-08-12 the live gateway exposes only `METRICOOL_TOKEN`, `APIFY_API_KEY`,
-> and the page Meta token endpoint above.
+> The live gateway exposes `METRICOOL_TOKEN`, `APIFY_API_KEY`, and server-side Meta
+> endpoints. It does not expose a generic user token or auto-select one of many pages.
 
 ---
 
@@ -351,8 +357,8 @@ The agent uses this table to know which secret to fetch when a skill loads:
 
 | Endpoint | Returns |
 |----------|---------|
-| `GET /token` | When Meta auth is configured: `{"page_access_token": "...", "page_id": "...", "expires_at": ...}`. It does **not** return `access_token`; scripts must read `page_access_token`. If it returns an OAuthException/code 190, renew the underlying Facebook source token first. |
-| `GET /pages` | `{"pages": [...]}` with page IDs, names, and linked Instagram business accounts. Page access tokens are intentionally omitted. |
+| `GET /token` | Stateful legacy single-page endpoint. It may return a selected/cached `page_access_token` or `409 multiple_pages_found`; it never returns a generic `access_token`. Do not use it as a multi-page credential source or health check. |
+| `GET /pages` | `{"pages": [...]}` with page IDs, names, and linked Instagram business accounts. Use this for health checks and account discovery; page access tokens are intentionally omitted. |
 | `GET /thumbnail?platform=fb\|ig&post_id=<id>` | `{"thumbnail_url": "..."}` |
 | `GET /comments?platform=fb\|ig&post_id=<id>` | Comments array for a post |
 
@@ -369,9 +375,9 @@ req = urllib.request.Request(url, headers={"x-api-key": KEY, "User-Agent": "curl
 
 ### Meta Marketing API (Ads/Campaigns)
 
-Do not use `GET /token` for Ads Manager / Marketing API work. The live endpoint
-returns a page token for organic FB/IG access, not a user ads token. Ads access
-needs a separate scoped broker/key before this skill should document it again.
+Do not use `GET /token` for Ads Manager / Marketing API work. It never returns
+a user ads token and may return `409 multiple_pages_found`. Ads access needs a
+separate scoped broker/key before this skill should document it again.
 
 ### Per-User Credentials (Local .env)
 
