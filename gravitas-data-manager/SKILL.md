@@ -2,16 +2,16 @@
 name: gravitas-data-manager
 description: >
   Single entry point for ALL Gravitas social/reporting data across Facebook,
-  Instagram, and TikTok. Two clean paths: pull your own brand's data (official
-  Meta API + Metricool), or pull competitor data (Instaloader/Apify public
+  Instagram, and TikTok. Two clean paths: pull your own brand's data (Metricool
+  plus official exports when needed), or pull competitor data (Instaloader/Apify public
   scrape). Owns the Intel App database, cross-platform workbook assembly,
   manual data handling, and QA. Load this when the user wants social
   engagement reports, competitor analysis, collab-aware Instagram data,
   Apify scraping, Metricool TikTok analytics, database-backed proof
   workbooks, or multi-platform reconciliation.
 compatibility: |
-  Requires Python 3.8+, curl, git. Shared secrets (Apify, Meta tokens,
-  Metricool, Supabase) via gravitas-gateway → gateway.shazan.me.
+  Requires Python 3.8+, curl, git. Shared secrets (Apify, Metricool,
+  Supabase) and safe Meta account discovery via gravitas-gateway → gateway.shazan.me.
   Per-user: Instaloader session (local .env). Scripts: requests, supabase,
   openpyxl.
 argument-hint: "[brand] [date range]"
@@ -37,10 +37,6 @@ curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
 # Apify token (FB/IG scraping fallback)
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
   "$GRAVITAS_GATEWAY_URL/secret/APIFY_API_KEY"
-
-# Meta Page token (official FB/IG insights — Own Data path)
-curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
-  "$GRAVITAS_GATEWAY_URL/token"
 
 # Metricool token (TikTok analytics — Own Data path)
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
@@ -75,8 +71,8 @@ Ask the user:
 ```
 Whose data are we pulling?
 
-1. Our own brand — official metrics from our accounts
-   (Meta API for FB/IG, Metricool for TikTok)
+1. Our own brand — Metricool first, with official exports for gaps
+   (gateway `/pages` validates the FB/IG account mapping)
 2. Competitor data — public scrape of their posts
    (Instaloader or Apify for IG/FB)
 ```
@@ -93,7 +89,8 @@ slides — note it and handle after the primary path completes.
 
 ## Phase 2: Path A — Own Data
 
-We own these accounts. We have official access. We get full metrics.
+We own these accounts. Use Metricool first; use official Meta exports when the
+requested metric or collab/tagged-post coverage is missing.
 
 ### Step A1: Pick the brand
 
@@ -112,7 +109,7 @@ Use `ask_user` with options from the results. If only one, auto-select.
 ```
 What metrics do you need?
 
-Recommended for owned accounts (all available via official sources):
+Recommended for owned accounts (confirm availability in the selected source):
   ☑ Reach
   ☑ Impressions
   ☑ Likes / Reactions
@@ -142,21 +139,30 @@ Ask for the reporting period. Accept `YYYY-MM-DD` to `YYYY-MM-DD`, presets
 
 Route by platform — handled automatically based on what the brand has connected:
 
-**Instagram + Facebook (Meta API):**
+**Instagram + Facebook:**
+
+Load the `metricool` skill and pull the selected brand's owned posts. Then
+validate the stored FB page / IG account mapping without exposing a token.
+Set the IDs from the selected profile in Step A1; exactly one gateway page must
+match both:
 
 ```bash
 source ~/.gravitas-skills/.env
-TOKEN=$(curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
-  "$GRAVITAS_GATEWAY_URL/token" | python -c "import sys,json; print(json.load(sys.stdin)['page_access_token'])")
-PAGE_ID=$(curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
-  "$GRAVITAS_GATEWAY_URL/token" | python -c "import sys,json; print(json.load(sys.stdin)['page_id'])")
-
-# Instagram insights
-curl -s "https://graph.facebook.com/v25.0/${IG_USER_ID}/media?fields=...&access_token=${TOKEN}"
-
-# Facebook page insights
-curl -s "https://graph.facebook.com/v25.0/${PAGE_ID}/posts?fields=...&access_token=${TOKEN}"
+PAGES_FILE=$(mktemp)
+PYTHON_BIN=$(command -v python3 || command -v python)
+trap 'rm -f "$PAGES_FILE"' EXIT
+curl -sS --fail-with-body -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
+  "$GRAVITAS_GATEWAY_URL/pages" > "$PAGES_FILE"
+META_PAGE_ID="<selected meta_page_id>" META_IG_ID="<selected meta_ig_id>" \
+  "$PYTHON_BIN" -c 'import json,os,sys; d=json.load(open(sys.argv[1])); assert isinstance(d.get("pages"),list) and d["pages"], "no pages returned"; assert "access_token" not in json.dumps(d), "token leaked"; m=[p for p in d["pages"] if p.get("id")==os.environ["META_PAGE_ID"] and (p.get("instagram_business_account") or {}).get("id")==os.environ["META_IG_ID"]]; assert len(m)==1, f"expected one matching page, found {len(m)}"; print(m[0]["name"], (m[0].get("instagram_business_account") or {}).get("username",""), sep="\t")' "$PAGES_FILE"
 ```
+
+Do **not** fetch `/token`: it is a legacy single-page endpoint and is not a
+usable multi-page credential source. For exact Meta
+insights or collab/tagged-post coverage missing from Metricool, use an official
+Meta Business Suite export until a scoped read-only insights proxy exists.
+Gateway `/thumbnail` and `/comments` remain available server-side when a post ID
+is already known.
 
 **TikTok (Metricool):**
 
@@ -170,7 +176,7 @@ posts tiktok <blogId> YYYY-MM-DDT00:00:00 YYYY-MM-DDT23:59:59
 
 Present the data as a table in chat first. Then offer:
 1. Export to XLSX (with official-source labels)
-2. Add to database (`competitor_posts` with `source = 'official_meta'`)
+2. Add to database with the actual source (`metricool` or `official_meta` export)
 3. Generate report slides
 
 ---
