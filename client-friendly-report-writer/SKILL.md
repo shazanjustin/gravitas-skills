@@ -91,6 +91,28 @@ Implication: [why it matters]
 Action: [what to do next]
 ```
 
+Use this structure for a numbered Key Takeaways slide, where findings run as 2 to 4 columns across one slide:
+
+```text
+01
+
+[Headline: one sentence carrying the argument, cause-effect where the data supports it]
+
+[What happened, with the 2 to 3 numbers that prove it.]
+
+[What it means, and how the client compares.]
+
+For [Client]: [the specific action that follows from this finding.]
+```
+
+Rules for this format:
+
+- Keep every column's body within roughly 100 characters of the others. A column that runs long has to be set in a smaller size to fit, and the row stops reading as one set. In one July report, columns of 625, 743 and 983 characters forced the third down to 7pt against 8pt for the other two, which was visible at a glance.
+- If the copy does not fit, cut the weakest takeaway rather than shrinking type for one column.
+- 3 columns is the usual house format. Prefer 3 strong findings over 4 thin ones.
+- Every column ends with the `For [Client]:` line. That line is the payoff, and a column without one is an observation rather than a takeaway.
+- The headline should still follow the Title Rules below. A numbered slide is not a licence to write label headlines like "Posting Volume".
+
 ## Title Rules
 
 Every finding title must explain a cause-effect relationship, a trend, or a useful strategic interpretation. The title should already contain the argument.
@@ -274,6 +296,42 @@ Prefer normal analytical words:
 - offset
 
 Do not use theatrical phrasing. Client reporting is not campaign copy.
+
+## Punctuation Rules
+
+Do not use em dashes (—) or en dashes (–) in client-facing copy. Rewrite with a comma, a colon, a semicolon, or a separate sentence.
+
+Bad:
+
+```text
+Reach declined 54.0% — the lowest of the year — while engagement held steady.
+```
+
+Better:
+
+```text
+Reach declined 54.0%, the lowest of the year, while engagement held steady.
+```
+
+For ranges, write the word instead of a dash.
+
+Bad:
+
+```text
+Contest period: 3–31 July
+TikTok Grocer Day, 13–17 July
+```
+
+Better:
+
+```text
+Contest period: 3 to 31 July
+TikTok Grocer Day, 13 to 17 July
+```
+
+Hyphens inside compound words are fine and should be kept: same-day, one-off, receipt-gated, high-intent, doctor-fronted. The rule is about the long dashes only.
+
+Check the output for `—` and `–` before returning it. This is a formatting rule, not a style preference, so it applies to every deliverable including slide copy, tables, and headlines.
 
 ## Causality Rules
 
