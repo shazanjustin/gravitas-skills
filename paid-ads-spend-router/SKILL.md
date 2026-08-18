@@ -61,6 +61,7 @@ Parameters worth knowing:
 | `delivering=1` | Return only ads that actually spent. `running_ads` still reports the true ACTIVE total. |
 | `diagnose=1` | Adds `observed_actions`: the action types and counts Meta really returned. |
 | `attribution=` | e.g. `7d_click,1d_view`. Overrides the unified account setting. |
+| `status=any` | Include ads that spent in the window but are no longer ACTIVE. Required to reconcile totals against Ads Manager. |
 
 Each ad comes back with `schedule` (start, end, days left, budget) and `links`
 (Ads Manager deep links to the ad, ad set and campaign).
@@ -176,7 +177,24 @@ curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
   "$GRAVITAS_GATEWAY_URL/ads/running?account=<acct>&days=60&diagnose=1&attribution=28d_click,1d_view"
 ```
 
-Read `observed_actions`, then say which of these it is:
+Two things must be ruled out **before** the reading below, because either one
+makes a converting campaign report zero:
+
+- **Is spend missing?** Compare the total against Ads Manager. `delivering=1`
+  reports only currently-ACTIVE ads, so an ad that spent and was then paused
+  vanishes — and it takes its conversions with it. Re-run with
+  `status=any` and check the total moves into line.
+- **Is it a Collaborative Ads account?** CPAS conversions live in
+  `catalog_segment_actions`, never in `actions[]`. Check
+  `observed_catalog_actions` in the diagnose response before concluding
+  anything.
+
+Both of these produced a false zero on a real campaign on 18 Aug 2026: it was
+reported as 0 purchases and 883.83 MYR when the truth was 16 purchases at a
+6.81 ROAS on 1,099.88 MYR.
+
+Then read `observed_actions` and `observed_catalog_actions`, and say which of
+these it is:
 
 1. **No conversion action of any type, across windows** → genuinely zero.
 2. **A conversion type is present but unmapped** → a reporting gap, not a

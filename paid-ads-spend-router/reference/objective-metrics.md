@@ -61,6 +61,31 @@ curl -s -g "https://graph.facebook.com/v25.0/act_<ACCOUNT_ID>/ads?fields=id,name
 
 Then request insights separately at `level=ad` and **join the two lists**.
 
+## Collaborative Ads report conversions somewhere else
+
+If the account runs **Collaborative Ads (CPAS)** — a brand buying against a
+retailer's catalogue, which any `* CPAS` account here does — conversions do
+**not** appear in `actions[]`. They come back in `catalog_segment_actions`,
+with `catalog_segment_value` for the revenue. Ads Manager labels them
+"purchases with shared items" and "in-app adds to cart with shared items".
+
+Omit those fields and a CPAS campaign is *structurally incapable* of showing a
+conversion: `actions[]` still carries the engagement and video types, so the
+response looks healthy while everything commercial is missing, and the campaign
+reads as a total failure. Measured 18 Aug 2026, a campaign reported as 0
+purchases was in fact returning 16 purchases at 68.74 MYR each on a **6.81
+ROAS** — the best performer in the account, called the worst.
+
+Request them alongside the normal sales fields:
+
+```
+catalog_segment_actions, catalog_segment_value,
+converted_product_quantity, converted_product_value
+```
+
+Resolve purchases as `actions[purchase]` first, then
+`catalog_segment_actions[purchase]`, then `converted_product_quantity`.
+
 ## Traps
 
 Each of these has produced a wrong number in a real report.
@@ -94,6 +119,13 @@ Each of these has produced a wrong number in a real report.
   impressions and reach, and note that reach does not sum across placements —
   the same person reached on Feed and Reels is one person, so per-placement
   reach added together overcounts.
+- **Paused ads keep their spend.** Filtering on
+  `effective_status = ACTIVE` drops ads that spent earlier in the window and
+  were paused since, so account and campaign totals silently undershoot Ads
+  Manager. Measured: 883.83 MYR reported against 1,099.86 actual, and the
+  missing 216 MYR carried most of the conversions. Reconcile totals with
+  `status=any`; reserve the ACTIVE filter for "what is running", never for
+  "what did this cost".
 - **`curl -g` is mandatory** on any URL containing `{...}` — `time_range` and
   `filtering` both do. Without it curl glob-expands the URL, fires the request
   without the parameter, and the resulting error points nowhere near the cause.
