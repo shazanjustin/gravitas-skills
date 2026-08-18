@@ -371,7 +371,7 @@ function buildDigest(rows, { now, maxPerPerson, title }) {
       const due = row["Due Date"]
         ? `${shortDate(row["Due Date"])}${isLate(row) ? ` (${daysBetween(row["Due Date"], now)}d late)` : ""}`
         : "";
-      lines.push(`${num}. ${status} — ${row["Task Name"].trim()}${due ? ` — ${due}` : ""}`);
+      lines.push(`${num}. ${status} — ${row["Task Name"].trim()}${due ? ` — ${due}` : ""}  #${row.Id}`);
     }
     const hidden = tasks.length - maxPerPerson;
     if (hidden > 0) lines.push(`  …and ${hidden} more`);
