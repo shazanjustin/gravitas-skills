@@ -6,7 +6,7 @@ description: |
   status, estimated hours, deck links, which Rumah. Use for questions like
   "what's on the Performance list", "what is Serene working on", "what's due
   this week", "mark task 42 complete", or "change task 42's due date". One
-  table only; supports guarded edits without exposing the NocoDB token.
+  table only; supports guarded adds and edits without exposing the NocoDB token.
 compatibility: |
   Requires node (>=18, for global fetch). Uses GRAVITAS_GATEWAY_KEY +
   GRAVITAS_GATEWAY_WRITE_KEY + GRAVITAS_GATEWAY_URL from
@@ -16,17 +16,17 @@ compatibility: |
 
 # Performance Tracker
 
-Reads and edits the **Performance** table in the NocoDB "Central" base — the
+Reads, adds to and edits the **Performance** table in the NocoDB "Central" base — the
 team's task and deliverables list — through the Gravitas gateway
 (`gateway.shazan.me`).
 
 The gateway holds the NocoDB credential and only exposes this one table. You
 never see the token, and no other base or table is reachable through this route.
-Edits require a numeric row `Id`; create and delete are not supported.
+Edits require a numeric row `Id`. Rows can be created, but never deleted.
 
 **Use `scripts/perf.mjs` rather than hand-rolling HTTP calls.** It reads the
 same env file, prints a compact table instead of ~23KB of JSON for 43 rows, and
-makes edits dry-run by default with a mandatory read-back check. The raw HTTP
+makes every write dry-run by default with a mandatory read-back check. The raw HTTP
 contract is documented at the bottom for cases the script doesn't cover.
 
 ## Read
@@ -46,7 +46,8 @@ overdue dates are marked with a trailing `!`. Add `--json` to `list` for the raw
 gateway rows when you need a field the table doesn't show.
 
 Every result carries a NocoDB link — `list` prints the table URL in its footer,
-while `show` and `set` return a `url` deep-linked to that row (`?rowId=N`). Pass
+while `show`, `set` and `add` return a `url` deep-linked to that row
+(`?rowId=N`). Pass
 it along when reporting to a human so they can click through and see the row
 themselves.
 
@@ -72,8 +73,32 @@ against what was saved — a mismatch is reported as a failed edit and is not
 retried. That read-back matters because the route is last-write-wins and a 2xx
 is not proof the value landed.
 
-Assignment, `Rumah`, and `Account` changes stay blocked until their relation
-payloads and authorization rules are documented; the gateway rejects them.
+`Assigned to`, `Rumah` and `Account` **cannot be changed on an existing row** —
+the gateway rejects them on edit. They can only be set when the task is created
+(see below). Reassigning someone else's task is a decision the tracker does not
+let you make from here; do it in NocoDB.
+
+## Add a task
+
+```bash
+node scripts/perf.mjs add --name "CIMB Aug Report: Data Collection" \
+  --due 2026-09-02 --status "To Do" --who dulanaka.yasaswin@gravitas.my \
+  --rumah "Rumah Hijau" [--apply]
+```
+
+`--name` is required; everything else is optional. On top of the editable
+fields, `add` also takes the three create-only ones: `--who` (assignee, by email
+— NocoDB resolves the address to the user), `--rumah`, and `--account`.
+
+Like `set`, it is dry-run by default and prints exactly what it would create.
+On `--apply` it creates the row, then re-fetches it by the returned `Id` and
+verifies every field, reporting the new row's `url`.
+
+**There is no delete.** A row added by mistake has to be removed by hand in
+NocoDB, so prefer running the dry-run first and reading it.
+
+One row per call — the gateway takes a single object, not a batch. Adding
+several tasks means several calls.
 
 ## Fields per row
 
@@ -92,10 +117,10 @@ which belongs to a different system and is rejected here.)
 
 ## Notes
 
-- Edits are scoped to existing rows and allowlisted fields. There is no add or
-  delete path.
+- Edits are scoped to existing rows and allowlisted fields. Creates are one row
+  per call. There is no delete path.
 - **Reads and writes use different keys.** `GRAVITAS_GATEWAY_KEY` is read-only;
-  a PATCH with it returns 401. Edits need `GRAVITAS_GATEWAY_WRITE_KEY`.
+  a POST or PATCH with it returns 401. Both need `GRAVITAS_GATEWAY_WRITE_KEY`.
 - **Filtering by assignee:** `Assigned to` is a linked-user field, so a server
   `where` on it is unreliable — `--who` filters the fetched rows client-side for
   this reason.
@@ -117,12 +142,15 @@ source ~/.gravitas-skills/.env
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
   "$GRAVITAS_GATEWAY_URL/nocodb/performance?where=(Status,neq,Completed)&limit=100"
 
-# Write — minimal changed-field patch only, never a full row snapshot
+# Edit — minimal changed-field patch only, never a full row snapshot
 curl --fail-with-body -sS -X PATCH \
   -H "x-api-key: $GRAVITAS_GATEWAY_WRITE_KEY" \
   -H "Content-Type: application/json" \
   "$GRAVITAS_GATEWAY_URL/nocodb/performance" \
   -d '{"Id":42,"Status":"Completed"}'
+
+# Create — one object, no Id (NocoDB assigns it and returns [{"Id":N}])
+curl --fail-with-body -sS -X POST   -H "x-api-key: $GRAVITAS_GATEWAY_WRITE_KEY"   -H "Content-Type: application/json"   "$GRAVITAS_GATEWAY_URL/nocodb/performance"   -d '{"Task Name":"New task","Due Date":"2026-09-02","Assigned to":"someone@gravitas.my"}'
 ```
 
 NocoDB `where` grammar is `(Field,op,value)` — ops include `eq`, `neq`, `like`,

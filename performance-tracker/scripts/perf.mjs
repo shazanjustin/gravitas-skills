@@ -38,6 +38,15 @@ const FIELD_TO_COLUMN = {
   deck: "Deck Link",
 };
 
+// Creatable but not editable: the gateway takes these on POST and refuses them
+// on PATCH. Authoring a task with no owner is fine to allow; reassigning
+// someone else's existing task is not.
+const CREATE_ONLY_FIELD_TO_COLUMN = {
+  who: "Assigned to", // an email address; NocoDB resolves it to the user
+  rumah: "Rumah",
+  account: "Account",
+};
+
 // Observed single-select values. The route can't enumerate the real option
 // list, so this is a typo guard, not a schema -- --allow-new-status skips it.
 const KNOWN_STATUSES = ["To Do", "In Progress", "Internal Review", "Completed"];
@@ -47,6 +56,7 @@ function usage(exitCode = 1) {
   node perf.mjs list [filters]
   node perf.mjs show <Id>
   node perf.mjs set <Id> [fields...] [--apply]
+  node perf.mjs add --name "New task" [fields...] [--apply]
 
 Filters for list:
   --open                 exclude Completed
@@ -66,10 +76,16 @@ Fields for set:
   --deck https://...
   --allow-new-status      accept a --status outside the known list
 
+Extra fields for add (create-only; the gateway refuses them on set):
+  --who someone@gravitas.my   assignee, by email
+  --rumah "Rumah Hijau"
+  --account "Client name"
+
 Env (process.env wins, else --env-file, else ~/.gravitas-skills/.env):
   GRAVITAS_GATEWAY_URL, GRAVITAS_GATEWAY_KEY, GRAVITAS_GATEWAY_WRITE_KEY
 
-set defaults to dry-run. Add --apply to write.`);
+set and add default to dry-run. Add --apply to write.
+There is no delete: a row created by mistake has to be removed in NocoDB.`);
   process.exit(exitCode);
 }
 
@@ -279,6 +295,52 @@ function buildPatch(args) {
   return patch;
 }
 
+async function cmdAdd(env, args) {
+  if (args.name === undefined || !String(args.name).trim()) {
+    throw new Error("--name is required to add a task");
+  }
+  // Reuse the edit validators (dates, hours, status) so add and set can't drift
+  // apart on what they accept, then layer the create-only fields on top.
+  const record = buildPatch(args);
+  for (const [flag, column] of Object.entries(CREATE_ONLY_FIELD_TO_COLUMN)) {
+    if (args[flag] === undefined) continue;
+    if (flag === "who" && !String(args[flag]).includes("@")) {
+      throw new Error(`--who wants an email address, got: ${args[flag]}`);
+    }
+    record[column] = args[flag];
+  }
+
+  const result = { ok: true, dryRun: !args.apply, willCreate: record };
+
+  if (args.apply) {
+    const created = await gatewayFetch(env, { method: "POST", key: env.writeKey, body: record });
+    // NocoDB answers a create with [{ Id }] and nothing else, so the new row
+    // has to be read back before anything can be said about what was stored.
+    const id = Array.isArray(created) ? created[0]?.Id : created?.Id;
+    if (!Number.isInteger(id)) throw new Error(`Create returned no Id: ${JSON.stringify(created).slice(0, 200)}`);
+
+    const after = await fetchRow(env, id);
+    const mismatched = Object.entries(record).filter(([column, want]) => {
+      // `Assigned to` goes in as an email and comes back as an array of user
+      // objects, so compare on what was actually asked for: the address.
+      if (column === "Assigned to") {
+        return !(after[column] || []).some((u) => (u.email || "").toLowerCase() === String(want).toLowerCase());
+      }
+      return String(after[column] ?? "") !== String(want ?? "");
+    });
+    if (mismatched.length) {
+      throw new Error(
+        `Created row ${id} but these did not stick: ${mismatched.map(([c, want]) => `${c} (wanted ${JSON.stringify(want)}, saved ${JSON.stringify(after[c] ?? null)})`).join("; ")}. Inspect: ${rowUrl(id)}`,
+      );
+    }
+    result.Id = id;
+    result.verified = true;
+    result.url = rowUrl(id);
+  }
+
+  console.log(JSON.stringify(result, null, 2));
+}
+
 async function cmdSet(env, args) {
   const id = args._[1];
   if (!/^\d+$/.test(String(id || ""))) usage();
@@ -331,6 +393,7 @@ async function main() {
   if (command === "list") return cmdList(env, args);
   if (command === "show") return cmdShow(env, args);
   if (command === "set") return cmdSet(env, args);
+  if (command === "add") return cmdAdd(env, args);
   usage();
 }
 
