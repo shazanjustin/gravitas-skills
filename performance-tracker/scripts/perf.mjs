@@ -14,6 +14,16 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 
 const ROUTE = "/nocodb/performance";
+
+// Where a human goes to see this table. Unrelated to the API path the gateway
+// uses (/api/v2/tables/<tableId>/records), which needs no base or view id --
+// these two ids exist only in the dashboard URL and cannot be discovered
+// through the gateway, so they are recorded here.
+const TABLE_URL =
+  "https://ozy.gravitas.my/wxnfngze/pboui1exiw4lryy/mr4y6x8f39y5m4k/vwp212p03jtdkys1/performance-task-list";
+// NocoDB opens the expanded row for ?rowId=N. If a future version renames the
+// param it degrades to opening the plain table view, not to a broken link.
+const rowUrl = (id) => `${TABLE_URL}?rowId=${id}`;
 const DEFAULT_ENV_FILE = join(homedir(), ".gravitas-skills", ".env");
 const MAX_LIMIT = 200; // the gateway caps it here; asking for more is silently clamped
 
@@ -226,6 +236,7 @@ async function cmdList(env, args) {
   const overdue = rows.filter((r) => r["Due Date"] && r["Due Date"] < now && r.Status !== "Completed").length;
   console.log(renderTable(rows));
   console.log(`\n${rows.length} row(s)${overdue ? `, ${overdue} overdue (!) as of ${now}` : ""}`);
+  console.log(TABLE_URL);
 }
 
 async function cmdShow(env, args) {
@@ -244,6 +255,7 @@ async function cmdShow(env, args) {
     Account: row.Account,
     "Assigned to": assignees(row),
     UpdatedAt: row.UpdatedAt,
+    url: rowUrl(row.Id),
   }, null, 2));
 }
 
@@ -286,6 +298,7 @@ async function cmdSet(env, args) {
     Id: Number(id),
     taskName: before["Task Name"],
     changes,
+    url: rowUrl(Number(id)),
   };
 
   if (args.apply) {
@@ -301,7 +314,7 @@ async function cmdSet(env, args) {
     );
     if (mismatched.length) {
       throw new Error(
-        `Edit did not stick for: ${mismatched.map(([c, want]) => `${c} (wanted ${JSON.stringify(want)}, saved ${JSON.stringify(after[c] ?? null)})`).join("; ")}. Not retrying.`,
+        `Edit did not stick for: ${mismatched.map(([c, want]) => `${c} (wanted ${JSON.stringify(want)}, saved ${JSON.stringify(after[c] ?? null)})`).join("; ")}. Not retrying. Inspect: ${rowUrl(Number(id))}`,
       );
     }
     result.verified = true;

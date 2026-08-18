@@ -45,6 +45,11 @@ Filters combine. Output is sorted soonest-due-first with undated rows last, and
 overdue dates are marked with a trailing `!`. Add `--json` to `list` for the raw
 gateway rows when you need a field the table doesn't show.
 
+Every result carries a NocoDB link — `list` prints the table URL in its footer,
+while `show` and `set` return a `url` deep-linked to that row (`?rowId=N`). Pass
+it along when reporting to a human so they can click through and see the row
+themselves.
+
 ## Edit one task
 
 Identify the row by its numeric `Id` — `list`/`show` first if you don't have it.
