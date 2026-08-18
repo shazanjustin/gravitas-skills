@@ -5,7 +5,8 @@ description: |
   "Central" base) through the Gravitas gateway: what's assigned, due dates,
   status, estimated hours, deck links, which Rumah. Use for questions like
   "what's on the Performance list", "what is Serene working on", "what's due
-  this week", "mark task 42 complete", or "change task 42's due date". One
+  this week", "mark task 42 complete", or "change task 42's due date". Also
+  builds the daily standup digest posted to Discord. One
   table only; supports guarded adds and edits without exposing the NocoDB token.
 compatibility: |
   Requires node (>=18, for global fetch). Uses GRAVITAS_GATEWAY_KEY +
@@ -99,6 +100,33 @@ NocoDB, so prefer running the dry-run first and reading it.
 
 One row per call — the gateway takes a single object, not a batch. Adding
 several tasks means several calls.
+
+## Daily digest
+
+```bash
+node scripts/perf.mjs digest [--title Standup] [--max-per-person 6]
+```
+
+Prints a ready-to-post Discord block: open tasks grouped by person,
+alphabetically, overdue ones flagged 🔴 with how many days late, and a link to
+the table. Completed rows are excluded.
+
+It is built to land in **one** Discord message: if the block would exceed 2000
+characters the per-person cap tightens until it fits, and the excess shows as
+"…and N more". Deciding that here beats letting Discord's chunker pick a split
+point — a standup spread over two messages has stopped being scannable.
+
+**Post it verbatim.** When this runs on a schedule, the whole point is that the
+output is identical every morning; re-describing or "improving" the layout each
+day defeats it. If the format is wrong, change it here, not in the prompt.
+
+Suggested schedule (weekdays, 9am Malaysia — `/ev-schedule add` in Discord):
+
+> prompt: Run `node /root/gravitas-workspace/.pi/skills/performance-tracker/scripts/perf.mjs digest` and post its output exactly as-is — no preamble, no summary, no reformatting.
+> cron: `0 9 * * 1-5`  ·  tz: `Asia/Kuala_Lumpur`
+
+Dates are resolved in `EV_SCHEDULE_TZ` (default `Asia/Kuala_Lumpur`), not the
+container's UTC — otherwise a 9am run computes "overdue" against yesterday.
 
 ## Fields per row
 
