@@ -114,8 +114,9 @@ Completed rows are excluded. All tasks are shown by default; `--max-per-person`
 caps a person's lines when a large team would overflow one message.
 
 The numbers are the point of the format: reply with a number to target a task
-("mark 5 done", "edit 7"). Re-run `digest` to resolve a number back to the task
-(and its NocoDB Id via `list --json`) before calling `set`.
+("mark 5 done", "edit 7"). Each line also carries the NocoDB `Id` (the `#NN` at
+the end) — prefer that for edits since it is stable across digests. Re-run
+`digest` to resolve a number back to the task and its Id before calling `set`.
 
 It is built to land in **one** Discord message: if the block would exceed 2000
 characters the per-person cap tightens until it fits, and the excess shows as
