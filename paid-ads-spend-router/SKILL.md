@@ -1,11 +1,12 @@
 ---
 name: paid-ads-spend-router
-description: Route Gravitas paid media questions correctly. Use when the user asks about ad spend, paid ads, media spend, campaign spend, Meta Ads/Facebook Ads/Instagram Ads, actual spend vs planned budget, SP/SKP MY/SG ad accounts, which ads are running, or paid-media performance breakdowns. Forces a clarification when spend could mean either live platform spend or budget/media-plan sheets. Reports objective-appropriate metrics rather than generic delivery figures. Planned budgets can use Drive/Sheets; general Meta reporting needs the scoped ads route.
+description: Route Gravitas paid media questions correctly. Use when the user asks about ad spend, paid ads, media spend, campaign spend, Meta Ads/Facebook Ads/Instagram Ads, actual spend vs planned budget, SP/SKP MY/SG ad accounts, which ads are running, or paid-media performance breakdowns. Forces a clarification when spend could mean either live platform spend or budget/media-plan sheets. Reports objective-appropriate metrics rather than generic delivery figures. Actual Meta spend and performance run through the gateway ads routes; planned budgets use Drive/Sheets. Replies are shaped for Discord.
 compatibility: |
-  Requires gravitas-gateway and curl. gateway.shazan.me `GET /token` returns
-  page access tokens only, never a Marketing API user token, and may return
-  `409 multiple_pages_found`. Objective-to-metric mapping and the Graph API
-  field recipes live in `reference/objective-metrics.md`.
+  Requires gravitas-gateway and curl. Live ads data comes from
+  gateway.shazan.me `/ads/accounts` and `/ads/running`; `GET /token` returns
+  page access tokens only and is not for Marketing API work. Objective-to-metric
+  mapping and the Graph API field recipes live in
+  `reference/objective-metrics.md`.
 argument-hint: "[brand/account] [date range] [actual spend or planned budget]"
 ---
 
@@ -38,33 +39,47 @@ Skip the clarification only when the wording clearly names the source:
 
 `GET /token` on the shared gateway is a legacy **organic page-token** endpoint.
 It never returns a Marketing API user token. Do **not** point it at
-`/me/adaccounts`, and do **not** quietly fall back to Drive/Sheets as if a
-planned budget were actual spend.
-
-One live ads read exists today:
+`/me/adaccounts` — go through the gateway's scoped ads routes instead, which
+keep the token server-side and return allowlisted fields only.
 
 ```bash
+# Every ad account, with its billing currency.
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
-  "$GRAVITAS_GATEWAY_URL/skp-eastwest-monitor?save=0"
+  "$GRAVITAS_GATEWAY_URL/ads/accounts"
+
+# What is actually delivering, with objective-appropriate metrics.
+curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
+  "$GRAVITAS_GATEWAY_URL/ads/running?days=30&delivering=1"
 ```
 
-Its limits matter before you quote it as "our ads data":
+Parameters worth knowing:
 
-- **One hardcoded campaign.** Not an account sweep, not "all running ads".
-- **Fixed fields** — impressions, reach, spend, CPM, broken down by placement.
-  No objective-appropriate metrics (see 2b), so it cannot answer "how is this
-  performing" for anything except an awareness buy.
-- **Lifetime only** (`date_preset: maximum`), so it blends every optimization
-  change the campaign has been through.
-- **A plain GET writes a checkpoint**, moving the baseline that the dashboard's
-  movement column compares against. Always pass `?save=0` unless the user
-  explicitly wants a new baseline set.
-- Human-facing dashboard: `https://gateway.shazan.me/skp-eastwest-dashboard`
-  (prompts for the gateway API key in the browser; the key is not embedded).
+| Param | Effect |
+|---|---|
+| `account=` | Name substring or account id. Ambiguous shorthand returns `409` with the candidates — pick one, never guess. |
+| `days=` / `since=`+`until=` | Reporting window. Defaults to 30 days. |
+| `delivering=1` | Return only ads that actually spent. `running_ads` still reports the true ACTIVE total. |
+| `diagnose=1` | Adds `observed_actions`: the action types and counts Meta really returned. |
+| `attribution=` | e.g. `7d_click,1d_view`. Overrides the unified account setting. |
 
-Anything broader — account discovery, other campaigns, ad-level listings — needs
-the **scoped ads route** on the gateway. Until it exists, say plainly that
-general Meta reporting is not wired up yet rather than improvising around it.
+Each ad comes back with `schedule` (start, end, days left, budget) and `links`
+(Ads Manager deep links to the ad, ad set and campaign).
+
+**Three things the response will tell you that the numbers alone will not:**
+
+- **`running_ads` vastly exceeds the delivering count.** Measured 18 Aug 2026:
+  5,671 ads flagged ACTIVE across the 11 accounts, 67 delivering. The remainder
+  are old campaigns nobody paused, some dating to 2023. Never answer "how many
+  ads are running" with the ACTIVE count.
+- **`delivering: true` is not "live now".** It means the ad spent inside the
+  window. Of those 67, only 8 had a flight that had not already ended. When
+  someone asks what is running, filter on `schedule.days_left >= 0`.
+- **`budget_remaining` is unreliable** — it read 0 for all 67 ads including
+  actively-spending ones, because these buys use campaign-level budgets. Quote
+  `lifetime_budget`, not remaining.
+
+If a conversion count is zero, do not report it as a result until you have run
+`diagnose=1` with at least one explicit `attribution=` window. See Phase 2e.
 
 ### 2b. Resolve the objective before choosing metrics
 
@@ -86,7 +101,14 @@ Never report a fixed metric set across mixed objectives. When a request spans
 campaigns with different objectives, group the answer by objective and lead each
 group with its own primary metric.
 
-### 2c. Discover accounts before querying them
+### 2c. Reference: the Graph calls behind the routes
+
+The two sections below document what `/ads/accounts` and `/ads/running` do on
+your behalf. **You cannot run them** — they need the Marketing API token, which
+the gateway never dispenses. Read them to understand a response or to extend
+the routes, not as a call to make.
+
+#### Account discovery
 
 Discover accessible ad accounts when the user gives shorthand like SP/SKP or
 MY/SG. Known current accounts included `SP MY`, `SKP MY`, `SP SG`, and `SKP SG`,
@@ -109,7 +131,7 @@ curl -s "https://graph.facebook.com/v25.0/me/adaccounts?fields=id,account_id,nam
   | python3 -c 'import json,sys; d=json.load(sys.stdin); cols=["id","name","currency","account_status"]; [print("\t".join(str(a.get(k,"")) for k in cols)) for a in d.get("data", [])]'
 ```
 
-### 2d. Query insights
+#### Insights
 
 Query through `/act_ACCOUNT_ID/insights`. Use `time_range` for exact dates and
 `time_increment=monthly` or `1` only when the user asks for a monthly or daily
@@ -143,6 +165,33 @@ Meta clamps `until` to today. A range ending in the future comes back with
 `date_stop` set to today, not the date asked for — report the range actually
 covered rather than the one requested, or a partial month reads as a full one.
 
+### 2e. Before reporting a zero
+
+A zero-conversion campaign is the highest-stakes number in this skill: it either
+means the creative failed, or that nothing is being measured, and those lead to
+opposite actions. Never report one without ruling out the second.
+
+```bash
+curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
+  "$GRAVITAS_GATEWAY_URL/ads/running?account=<acct>&days=60&diagnose=1&attribution=28d_click,1d_view"
+```
+
+Read `observed_actions`, then say which of these it is:
+
+1. **No conversion action of any type, across windows** → genuinely zero.
+2. **A conversion type is present but unmapped** → a reporting gap, not a
+   campaign failure. Say so and name the action type.
+3. **Clicks with almost no landing page views** → tracking is broken. On a real
+   case, 391 link clicks produced 1 landing page view; the pixel fired
+   `view_content` twice, so it existed but the page was not reporting. That is
+   a pixel problem, and worse than a reporting one: an ad set optimizing for
+   offsite conversions has no signal to learn from and keeps spending blind.
+
+Also compare `link_click` against `outbound_clicks` before quoting traffic.
+On that same campaign they were 391 and 82 — nearly 5x apart, because
+`link_click` counts any link click while `outbound_clicks` counts people who
+actually left Meta.
+
 ## Phase 3: Planned budget / sheet path
 
 Use Composio Drive/Sheets only after the user confirms they want planned budget,
@@ -154,6 +203,64 @@ State the source explicitly in the answer:
 - "Planned budget from media-plan sheet"
 
 Never blend planned and actual spend without labeling both.
+
+## Phase 4: Answering in Discord
+
+The API returns far more than a chat message should carry. A 30-day sweep is
+about 2.5MB and 67 ads across 30-odd campaigns; pasting a fraction of that is
+the most common way this skill produces a bad answer. Discord chunks cleanly at
+2000 characters, so nothing breaks — it just becomes a dozen messages nobody
+reads.
+
+**Answer at campaign level, not ad level.** Ads within a campaign nearly always
+share a flight and an objective, so the campaign is the unit someone acts on.
+Drop to individual ads only when asked, or when one ad is the anomaly.
+
+**Shape of a good reply:**
+
+1. One sentence with the actual answer — how many are live, and total spend per
+   currency.
+2. A numbered list of live campaigns, soonest-ending first. Per line: name,
+   what ends when, spend, and the objective's primary metric.
+3. Anything alarming, called out separately.
+4. An offer to drill in, rather than pre-emptively dumping the detail.
+
+**Formatting rules specific to Discord:**
+
+- **Never pipe tables.** Discord does not render them; they arrive as noise.
+  Numbered bullets carry the same information.
+- **Wrap every URL in angle brackets** — `<https://adsmanager...>`. Bare links
+  each generate a preview embed, so five ads turn one reply into a wall of
+  cards. The angle brackets suppress that and keep the link clickable.
+- **At most ~5 links per reply.** Link the campaign, not each of its ads.
+- Round money to 2 decimals and cost-per-result to 3–4. Raw API precision
+  (`0.164666`) reads like a machine dumped its buffer.
+- **Always name the currency**, and never total MYR and SGD together.
+- Keep the whole reply under about 1500 characters. If it does not fit, the
+  answer is too granular, not too long.
+
+**Worked example** — "what ads are running right now?":
+
+> 8 ads are live right now across 3 campaigns — 3,545.13 MYR and 270.83 SGD
+> spent in the last 30 days. (5,671 are flagged ACTIVE, but almost all are old
+> campaigns nobody paused.)
+>
+> 1. **SKP MY — FC Instant Infusion** · ends today. 569.65 MYR, 4 ads.
+>    15,214 ThruPlays at 0.018 MYR and 1,783 landing page views at 0.166 MYR.
+>    <https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=...>
+> 2. **SP MY — TIMETIC Home Care (Purchases)** · ends 23 Aug. 827.12 MYR,
+>    2 ads, **0 purchases**. Worth a look — 391 clicks produced 1 landing page
+>    view, so the pixel is not reporting and ~1,290 MYR is still unspent.
+>    <https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=...>
+> 3. **SP MY — TIMETIC Holistic Care** · ends 31 Aug. 58.10 MYR, 2 ads,
+>    3,574 ThruPlays at 0.016 MYR. Started yesterday, best efficiency of the three.
+>
+> Want the ad-level breakdown for any of these, or the 30 campaigns that
+> already finished?
+
+Note what that reply does: leads with the number asked for, corrects the
+misleading ACTIVE count in one clause, puts the money-losing campaign second
+where it cannot be missed, and stops.
 
 ## Safety rules
 
