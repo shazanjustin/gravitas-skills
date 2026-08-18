@@ -57,6 +57,7 @@ function usage(exitCode = 1) {
   node perf.mjs show <Id>
   node perf.mjs set <Id> [fields...] [--apply]
   node perf.mjs add --name "New task" [fields...] [--apply]
+  node perf.mjs digest [--title Standup] [--max-per-person 6]
 
 Filters for list:
   --open                 exclude Completed
@@ -80,6 +81,9 @@ Extra fields for add (create-only; the gateway refuses them on set):
   --who someone@gravitas.my   assignee, by email
   --rumah "Rumah Hijau"
   --account "Client name"
+
+digest prints a ready-to-post Discord block: open tasks grouped by person,
+overdue flagged, capped to fit one 2000-char message.
 
 Env (process.env wins, else --env-file, else ~/.gravitas-skills/.env):
   GRAVITAS_GATEWAY_URL, GRAVITAS_GATEWAY_KEY, GRAVITAS_GATEWAY_WRITE_KEY
@@ -166,7 +170,15 @@ async function fetchRow(env, id) {
   return rows[0];
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+// "Today" has to be the team's today, not the container's. ev runs on UTC while
+// everyone reading this is in Malaysia (UTC+8), so `new Date().toISOString()`
+// reports yesterday's date for any run between 00:00 and 08:00 local -- which is
+// exactly when a morning standup fires. Every overdue marker would be a day out.
+// Same reasoning as ev's own EV_SCHEDULE_TZ default.
+const TZ = process.env.EV_SCHEDULE_TZ || "Asia/Kuala_Lumpur";
+// en-CA formats as YYYY-MM-DD, which sorts and compares like the ISO dates
+// NocoDB stores.
+const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
 
 function assignees(row) {
   return (row["Assigned to"] || [])
@@ -295,6 +307,102 @@ function buildPatch(args) {
   return patch;
 }
 
+// --- digest -----------------------------------------------------------------
+// A ready-to-post Discord block. Built here rather than described in a schedule
+// prompt so the daily post is byte-identical every morning and a model wobble
+// can't reshape it.
+
+const DISCORD_MESSAGE_LIMIT = 2000;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// NocoDB's display_name is null for everyone in this base, so names come from
+// the address. A couple of people go by something shorter on the team's own
+// trackers than their email suggests.
+const DISPLAY_NAME_OVERRIDES = { "dulanaka.yasaswin": "Dula" };
+
+function personName(email) {
+  const local = (email || "").split("@")[0];
+  if (DISPLAY_NAME_OVERRIDES[local]) return DISPLAY_NAME_OVERRIDES[local];
+  const first = local.split(/[._-]/)[0] || local || "Unassigned";
+  return first.charAt(0).toUpperCase() + first.slice(1);
+}
+
+const isoParts = (iso) => iso.split("-").map(Number);
+const shortDate = (iso) => { const [, m, d] = isoParts(iso); return `${d} ${MONTHS[m - 1]}`; };
+const asUTC = (iso) => { const [y, m, d] = isoParts(iso); return Date.UTC(y, m - 1, d); };
+const daysBetween = (from, to) => Math.round((asUTC(to) - asUTC(from)) / 86400000);
+
+function headingDate(iso) {
+  const [y, m, d] = isoParts(iso);
+  return `${DAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]} ${d} ${MONTHS[m - 1]}`;
+}
+
+function buildDigest(rows, { now, maxPerPerson, title }) {
+  const open = rows.filter((r) => r.Status !== "Completed");
+  const isLate = (r) => r["Due Date"] && r["Due Date"] < now;
+
+  const groups = new Map();
+  for (const row of open) {
+    const email = ((row["Assigned to"] || [])[0] || {}).email || "";
+    const name = personName(email);
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(row);
+  }
+
+  // Alphabetical, not most-overdue-first: a daily post that reorders people by
+  // how far behind they are turns a status update into a leaderboard.
+  const names = [...groups.keys()].sort((a, b) => a.localeCompare(b));
+
+  const overdueTotal = open.filter(isLate).length;
+  const lines = [
+    `## ${title} — ${headingDate(now)}`,
+    `**${open.length} open · ${overdueTotal} overdue**`,
+  ];
+
+  for (const name of names) {
+    const tasks = sortByDue(groups.get(name));
+    const late = tasks.filter(isLate).length;
+    lines.push("", `**${name}** — ${tasks.length} open${late ? `, ${late} overdue` : ""}`);
+    for (const row of tasks.slice(0, maxPerPerson)) {
+      const due = row["Due Date"]
+        ? `${shortDate(row["Due Date"])}${isLate(row) ? ` (${daysBetween(row["Due Date"], now)}d late)` : ""}`
+        : "no date";
+      lines.push(`${isLate(row) ? "🔴" : "·"} ${row["Task Name"].trim()} — ${due}`);
+    }
+    const hidden = tasks.length - maxPerPerson;
+    if (hidden > 0) lines.push(`  …and ${hidden} more`);
+  }
+
+  if (!open.length) lines.push("", "Nothing open. 🎉");
+  // A bare URL in angle brackets renders as a plain clickable link with no
+  // embed card. Masked [text](url) links are not reliably rendered in message
+  // content, and a link preview card under a daily digest is pure noise.
+  lines.push("", `<${TABLE_URL}>`);
+  return lines.join("\n");
+}
+
+async function cmdDigest(env, args) {
+  const rows = await fetchRows(env);
+  const now = today();
+  const title = args.title || "Standup";
+  let maxPerPerson = args.maxPerPerson ? Number(args.maxPerPerson) : 6;
+  if (!Number.isInteger(maxPerPerson) || maxPerPerson < 1) throw new Error("--max-per-person wants a positive integer");
+
+  // Discord splits anything over 2000 chars, and a standup spanning two
+  // messages has already stopped being scannable. Tighten the per-person cap
+  // until it fits rather than letting the chunker decide where to cut.
+  let text = buildDigest(rows, { now, maxPerPerson, title });
+  while (text.length > DISCORD_MESSAGE_LIMIT && maxPerPerson > 1) {
+    maxPerPerson -= 1;
+    text = buildDigest(rows, { now, maxPerPerson, title });
+  }
+  console.log(text);
+  if (text.length > DISCORD_MESSAGE_LIMIT) {
+    console.error(`warning: ${text.length} chars even at 1 task per person; Discord will split this.`);
+  }
+}
+
 async function cmdAdd(env, args) {
   if (args.name === undefined || !String(args.name).trim()) {
     throw new Error("--name is required to add a task");
@@ -394,6 +502,7 @@ async function main() {
   if (command === "show") return cmdShow(env, args);
   if (command === "set") return cmdSet(env, args);
   if (command === "add") return cmdAdd(env, args);
+  if (command === "digest") return cmdDigest(env, args);
   usage();
 }
 
