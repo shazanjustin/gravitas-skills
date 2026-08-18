@@ -104,12 +104,18 @@ several tasks means several calls.
 ## Daily digest
 
 ```bash
-node scripts/perf.mjs digest [--title Standup] [--max-per-person 6]
+node scripts/perf.mjs digest [--title Standup] [--max-per-person N]
 ```
 
 Prints a ready-to-post Discord block: open tasks grouped by person,
-alphabetically, overdue ones flagged 🔴 with how many days late, and a link to
-the table. Completed rows are excluded.
+alphabetically, each on a **numbered line** marked `Overdue` / `On track` /
+`No date` (overdue also shows how many days late), and a link to the table.
+Completed rows are excluded. All tasks are shown by default; `--max-per-person`
+caps a person's lines when a large team would overflow one message.
+
+The numbers are the point of the format: reply with a number to target a task
+("mark 5 done", "edit 7"). Re-run `digest` to resolve a number back to the task
+(and its NocoDB Id via `list --json`) before calling `set`.
 
 It is built to land in **one** Discord message: if the block would exceed 2000
 characters the per-person cap tightens until it fits, and the excess shows as

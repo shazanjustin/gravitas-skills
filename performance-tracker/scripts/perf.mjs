@@ -57,7 +57,7 @@ function usage(exitCode = 1) {
   node perf.mjs show <Id>
   node perf.mjs set <Id> [fields...] [--apply]
   node perf.mjs add --name "New task" [fields...] [--apply]
-  node perf.mjs digest [--title Standup] [--max-per-person 6]
+  node perf.mjs digest [--title Standup] [--max-per-person N]
 
 Filters for list:
   --open                 exclude Completed
@@ -83,7 +83,7 @@ Extra fields for add (create-only; the gateway refuses them on set):
   --account "Client name"
 
 digest prints a ready-to-post Discord block: open tasks grouped by person,
-overdue flagged, capped to fit one 2000-char message.
+numbered and marked Overdue / On track / No date, sized to one 2000-char message.
 
 Env (process.env wins, else --env-file, else ~/.gravitas-skills/.env):
   GRAVITAS_GATEWAY_URL, GRAVITAS_GATEWAY_KEY, GRAVITAS_GATEWAY_WRITE_KEY
@@ -360,15 +360,18 @@ function buildDigest(rows, { now, maxPerPerson, title }) {
     `**${open.length} open · ${overdueTotal} overdue**`,
   ];
 
+  let num = 0;
   for (const name of names) {
     const tasks = sortByDue(groups.get(name));
     const late = tasks.filter(isLate).length;
     lines.push("", `**${name}** — ${tasks.length} open${late ? `, ${late} overdue` : ""}`);
     for (const row of tasks.slice(0, maxPerPerson)) {
+      num += 1;
+      const status = !row["Due Date"] ? "No date" : isLate(row) ? "Overdue" : "On track";
       const due = row["Due Date"]
         ? `${shortDate(row["Due Date"])}${isLate(row) ? ` (${daysBetween(row["Due Date"], now)}d late)` : ""}`
-        : "no date";
-      lines.push(`${isLate(row) ? "🔴" : "·"} ${row["Task Name"].trim()} — ${due}`);
+        : "";
+      lines.push(`${num}. ${status} — ${row["Task Name"].trim()}${due ? ` — ${due}` : ""}`);
     }
     const hidden = tasks.length - maxPerPerson;
     if (hidden > 0) lines.push(`  …and ${hidden} more`);
@@ -386,7 +389,8 @@ async function cmdDigest(env, args) {
   const rows = await fetchRows(env);
   const now = today();
   const title = args.title || "Standup";
-  let maxPerPerson = args.maxPerPerson ? Number(args.maxPerPerson) : 6;
+  const openCount = rows.filter((r) => r.Status !== "Completed").length;
+  let maxPerPerson = args.maxPerPerson !== undefined ? Number(args.maxPerPerson) : Math.max(openCount, 1);
   if (!Number.isInteger(maxPerPerson) || maxPerPerson < 1) throw new Error("--max-per-person wants a positive integer");
 
   // Discord splits anything over 2000 chars, and a standup spanning two
