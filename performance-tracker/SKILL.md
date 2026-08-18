@@ -8,10 +8,10 @@ description: |
   this week", "mark task 42 complete", or "change task 42's due date". One
   table only; supports guarded edits without exposing the NocoDB token.
 compatibility: |
-  Requires curl. Uses GRAVITAS_GATEWAY_KEY + GRAVITAS_GATEWAY_WRITE_KEY +
-  GRAVITAS_GATEWAY_URL from ~/.gravitas-skills/.env (already present in the ev
-  container). No NocoDB token is needed or handled here — the gateway holds it
-  server-side.
+  Requires node (>=18, for global fetch). Uses GRAVITAS_GATEWAY_KEY +
+  GRAVITAS_GATEWAY_WRITE_KEY + GRAVITAS_GATEWAY_URL from
+  ~/.gravitas-skills/.env (already present in the ev container). No NocoDB
+  token is needed or handled here — the gateway holds it server-side.
 ---
 
 # Performance Tracker
@@ -24,36 +24,95 @@ The gateway holds the NocoDB credential and only exposes this one table. You
 never see the token, and no other base or table is reachable through this route.
 Edits require a numeric row `Id`; create and delete are not supported.
 
-## Fetch
+**Use `scripts/perf.mjs` rather than hand-rolling HTTP calls.** It reads the
+same env file, prints a compact table instead of ~23KB of JSON for 43 rows, and
+makes edits dry-run by default with a mandatory read-back check. The raw HTTP
+contract is documented at the bottom for cases the script doesn't cover.
+
+## Read
 
 ```bash
-source ~/.gravitas-skills/.env
-curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
-  "$GRAVITAS_GATEWAY_URL/nocodb/performance?limit=100"
+node scripts/perf.mjs list --open          # everything not Completed
+node scripts/perf.mjs list --overdue       # open and past due, as of today
+node scripts/perf.mjs list --who serene    # substring match on assignee
+node scripts/perf.mjs list --due 7d        # due within 7 days (or --due 2026-08-31)
+node scripts/perf.mjs list --status "In Progress"
+node scripts/perf.mjs list --undated       # rows with no Due Date
+node scripts/perf.mjs show 42              # one row, all fields
 ```
 
-Returns `{"list":[ ... ]}` — one object per task.
+Filters combine. Output is sorted soonest-due-first with undated rows last, and
+overdue dates are marked with a trailing `!`. Add `--json` to `list` for the raw
+gateway rows when you need a field the table doesn't show.
+
+## Edit one task
+
+Identify the row by its numeric `Id` — `list`/`show` first if you don't have it.
+If the request could match multiple rows, ask which one. Before applying, state
+the exact row and field change and get confirmation, unless the user already
+named both in the same request.
+
+```bash
+node scripts/perf.mjs set 42 --status Completed             # dry-run: prints the diff
+node scripts/perf.mjs set 42 --status Completed --apply     # actually writes
+```
+
+Fields: `--name`, `--desc`, `--due YYYY-MM-DD` (or `--due ""` to clear),
+`--status`, `--hours`, `--deck`. Several can be set in one call.
+
+The script refuses an edit that would change nothing, rejects a `--status`
+outside the known list (`--allow-new-status` overrides), sends only the changed
+fields, and after applying re-fetches the row and compares every requested value
+against what was saved — a mismatch is reported as a failed edit and is not
+retried. That read-back matters because the route is last-write-wins and a 2xx
+is not proof the value landed.
+
+Assignment, `Rumah`, and `Account` changes stay blocked until their relation
+payloads and authorization rules are documented; the gateway rejects them.
 
 ## Fields per row
 
 - `Task Name`, `Task Description`
-- `Due Date` (`YYYY-MM-DD`), `Status` (single-select, e.g. *To start* /
-  *Currently doing* / *Completed*)
+- `Due Date` (`YYYY-MM-DD`), `Status` (single-select)
 - `Est. Hours` (number)
 - `Assigned to` — array of users, each `{ email, display_name }`
 - `Assigned By` — user object
 - `Deck Link` (URL), `Rumah` (team, e.g. "Rumah Hijau"), `Account`
 - `Id`, `CreatedAt`, `UpdatedAt`
 
-## Edit one task
+`Status` values in use are **To Do**, **In Progress**, **Internal Review**,
+**Completed**. (Do not confuse these with the Deadline Tracker's own status
+vocabulary — *To start / Can start / Currently doing / Ongoing / Delivered* —
+which belongs to a different system and is rejected here.)
 
-Always fetch the row first and identify it by its numeric `Id`. If the user's
-request could match multiple rows, ask which row they mean. Before editing,
-state the exact row and field change and get confirmation unless the user has
-already explicitly named both in the same request.
+## Notes
+
+- Edits are scoped to existing rows and allowlisted fields. There is no add or
+  delete path.
+- **Reads and writes use different keys.** `GRAVITAS_GATEWAY_KEY` is read-only;
+  a PATCH with it returns 401. Edits need `GRAVITAS_GATEWAY_WRITE_KEY`.
+- **Filtering by assignee:** `Assigned to` is a linked-user field, so a server
+  `where` on it is unreliable — `--who` filters the fetched rows client-side for
+  this reason.
+- **Undated tasks are legitimate** — rows with a `Task Name` but no `Due Date`
+  exist; report them as undated rather than dropping them. Date filters like
+  `--due` necessarily exclude them; use `--undated` to see them.
+- Never paste raw gateway keys or tokens into chat.
+
+## Raw HTTP contract
+
+Only needed for something `perf.mjs` doesn't do (e.g. `viewId`, `offset`
+paging). The route passes a whitelist of NocoDB read params straight through:
+`limit` (capped at 200), `offset`, `where`, `sort`, `fields`, `viewId`.
 
 ```bash
 source ~/.gravitas-skills/.env
+
+# Read
+curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
+  "$GRAVITAS_GATEWAY_URL/nocodb/performance?where=(Status,neq,Completed)&limit=100"
+
+# Write — minimal changed-field patch only, never a full row snapshot
 curl --fail-with-body -sS -X PATCH \
   -H "x-api-key: $GRAVITAS_GATEWAY_WRITE_KEY" \
   -H "Content-Type: application/json" \
@@ -61,41 +120,6 @@ curl --fail-with-body -sS -X PATCH \
   -d '{"Id":42,"Status":"Completed"}'
 ```
 
-Editable fields: `Task Name`, `Task Description`, `Due Date`, `Status`,
-`Est. Hours`, `Deck Link`. Assignment, Rumah, and Account changes stay blocked
-until their relation payloads and authorization rules are documented.
-
-Only send `Id` plus the fields being changed. After a 2xx response, fetch the row
-again with `where=(Id,eq,42)` and compare every requested value with the saved
-row. Report a mismatch as a failed edit and do not retry blindly. Never send a
-full row snapshot: the route is last-write-wins, so minimal changed-field patches
-avoid restoring stale values.
-
-## Filtering & sorting
-
-The route passes a whitelist of NocoDB read params straight through:
-`limit` (capped at 200), `offset`, `where`, `sort`, `fields`, `viewId`.
-
-```bash
-# Open (not completed) tasks
-curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
-  "$GRAVITAS_GATEWAY_URL/nocodb/performance?where=(Status,neq,Completed)&limit=100"
-
-# Soonest due first, only a few fields
-curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
-  "$GRAVITAS_GATEWAY_URL/nocodb/performance?sort=Due%20Date&fields=Task%20Name,Due%20Date,Status,Assigned%20to"
-```
-
 NocoDB `where` grammar is `(Field,op,value)` — ops include `eq`, `neq`, `like`,
-`gt`, `lt`, `isWithin`; combine with `~and` / `~or`.
-
-## Notes
-
-- Edits are scoped to existing rows and allowlisted fields. There is no add or
-  delete path.
-- **Filtering by assignee:** `Assigned to` is a linked-user field, so a server
-  `where` on it is unreliable. Simplest is to pull the rows and filter on the
-  email inside each row's `Assigned to` array yourself.
-- **Undated tasks are legitimate** — rows with a `Task Name` but no `Due Date`
-  exist; report them as undated rather than dropping them.
-- Never paste raw gateway keys or tokens into chat.
+`gt`, `lt`, `isWithin`; combine with `~and` / `~or`. If you write by hand, do
+the read-back comparison yourself.
