@@ -257,6 +257,52 @@ bash scripts/metricool.sh swagger --search "scheduler"
 bash scripts/metricool.sh swagger --service "Stats Service"
 ```
 
+### 8. Competitor report straight into a Google Sheet
+
+**Use this instead of hand-assembling competitor pulls.** Anything shaped like
+"get <competitors> data for <period> into a sheet" is one command:
+
+```bash
+node scripts/competitor-report.mjs \
+  --brand "CIMB Malaysia" \
+  --competitors "Maybank,RHB Group" \
+  --from 2026-01-01 --to 2026-06-30
+```
+
+It resolves the brand and competitor ids at runtime, pulls every network in
+parallel, builds a Summary tab plus per-network post tabs, and creates the
+spreadsheet — about 20 seconds end to end, of which under a second is Metricool.
+
+| Flag | Default | Notes |
+|------|---------|-------|
+| `--brand` | required | substring match against the live brand list |
+| `--competitors` | required | comma-separated, substring match per network |
+| `--from` / `--to` | required | `YYYY-MM-DD`, inclusive |
+| `--networks` | `facebook,instagram,youtube` | Instagram always yields both Posts and Reels tabs |
+| `--tz` | `Asia/Kuala_Lumpur` | affects output timestamps only |
+| `--sheet <id>` | — | write into an existing spreadsheet instead of creating one |
+| `--title` / `--folder` | — | title and Drive folder for a newly created sheet |
+| `--json <path>` | — | also dump the shaped data |
+| `--dry-run` | — | fetch and summarise, write nothing |
+
+Why it exists: doing this conversationally costs ~33 sequential tool calls, and
+in ev's Discord daemon that overruns the 280s turn budget — the spreadsheet gets
+created and left **empty** while the reply still looks like success. The API work
+is not the bottleneck; the model round-trips are.
+
+Three things the script encodes that are easy to get wrong by hand:
+
+- Competitor endpoints need `from`, `to`, `timezone` **and** `limit` or they 400,
+  one missing param at a time.
+- `competitors[]` on the collection endpoints is quietly ignored — you get
+  everyone's posts back. Use `/{network}/{competitorId}/{posts|reels}` instead.
+- Responses are stamped with Metricool's **own** account timezone no matter what
+  `timezone` you send, so derive timestamps from the epoch field, never from
+  `dateTime`. Trusting `dateTime` silently shifts every row.
+
+Writing the sheet needs `COMPOSIO_MCP_URL` and `COMPOSIO_API_KEY`; without them
+use `--dry-run`.
+
 ## Rules for the Agent
 
 1. **Never hardcode brand IDs or the userToken.** Discover brands at runtime via
@@ -280,6 +326,11 @@ bash scripts/metricool.sh swagger --service "Stats Service"
 
 8. **If the swagger doesn't have what they need**, suggest the PDF at
    `https://static.metricool.com/API+DOC/API+English.pdf` as a secondary source.
+
+9. **For competitor data destined for a sheet, run `competitor-report.mjs`**
+   (workflow 8) rather than assembling the pulls yourself. Hand-assembly takes
+   ~33 tool calls, which overruns a Discord turn and leaves an empty spreadsheet
+   behind that still looks like a success.
 
 ## Installing This Skill
 
