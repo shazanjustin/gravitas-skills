@@ -90,7 +90,13 @@ def load_gateway_env():
 def load_env():
     # Precedence, lowest to highest: gateway -> local .env files -> real env vars.
     # The gateway is the shared source of truth; a local .env is an escape hatch.
-    values = dict(load_gateway_env())
+    gateway = load_gateway_env()
+    values = dict(gateway)
+    # The gateway namespaces its keys; the rest of this script uses the repo's names.
+    if gateway.get("SOCIAL_ATLAS_SUPABASE_URL"):
+        values["VITE_SUPABASE_URL"] = gateway["SOCIAL_ATLAS_SUPABASE_URL"]
+    if gateway.get("SOCIAL_ATLAS_SUPABASE_ANON_KEY"):
+        values["VITE_SUPABASE_ANON_KEY"] = gateway["SOCIAL_ATLAS_SUPABASE_ANON_KEY"]
     for path in (REPO_ENV, SKILL_ENV):
         if path.exists():
             values.update(_parse_env_text(path.read_text(encoding="utf-8", errors="ignore")))
@@ -115,12 +121,22 @@ def auth_header(env):
         req = urllib.request.Request(
             base + "/auth/v1/token?grant_type=password",
             data=json.dumps({"email": email, "password": password}).encode(),
-            headers={"apikey": env.get("VITE_SUPABASE_ANON_KEY", env["SUPABASE_SERVICE_ROLE_KEY"]), "Content-Type": "application/json"},
+            headers={
+                "apikey": env.get("VITE_SUPABASE_ANON_KEY") or env.get("SUPABASE_SERVICE_ROLE_KEY", ""),
+                "Content-Type": "application/json",
+            },
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=60) as response:
             return "Bearer " + json.load(response)["access_token"]
-    return "Bearer " + env["SUPABASE_SERVICE_ROLE_KEY"]
+    service_key = env.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not service_key:
+        sys.exit(
+            "No Social Atlas credentials. Expected SOCIAL_ATLAS_AUTH_EMAIL and "
+            "SOCIAL_ATLAS_AUTH_PASSWORD from the Gravitas gateway "
+            "(~/.gravitas-skills/.env), or a local .env."
+        )
+    return "Bearer " + service_key
 
 
 def call_function(env, endpoint, payload, timeout=600):
@@ -142,18 +158,30 @@ def call_function(env, endpoint, payload, timeout=600):
         sys.exit(f"{endpoint} failed HTTP {error.code}: {body}")
 
 
+def rest_headers(env, extra=None):
+    """PostgREST headers.
+
+    Uses the public anon key plus the automation account's admin token rather than
+    the service_role key, so this skill never holds a credential that bypasses RLS.
+    Falls back to the service key only when one is explicitly present.
+    """
+    apikey = env.get("VITE_SUPABASE_ANON_KEY") or env.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    headers = {
+        "apikey": apikey,
+        "Authorization": auth_header(env),
+        "Accept": "application/json",
+    }
+    if extra:
+        headers.update(extra)
+    return headers
+
+
 def rest_count(env, params):
     import urllib.parse
     query = urllib.parse.urlencode({"select": "id", **params})
     req = urllib.request.Request(
         env["VITE_SUPABASE_URL"].rstrip("/") + "/rest/v1/competitor_posts?" + query,
-        headers={
-            "apikey": env["SUPABASE_SERVICE_ROLE_KEY"],
-            "Authorization": "Bearer " + env["SUPABASE_SERVICE_ROLE_KEY"],
-            "Accept": "application/json",
-            "Prefer": "count=exact",
-            "Range": "0-0",
-        },
+        headers=rest_headers(env, {"Prefer": "count=exact", "Range": "0-0"}),
     )
     with urllib.request.urlopen(req, timeout=60) as response:
         total = response.headers.get("content-range", "*/0").rsplit("/", 1)[1]
@@ -169,11 +197,7 @@ def fetch_profile(env, name):
     })
     req = urllib.request.Request(
         env["VITE_SUPABASE_URL"].rstrip("/") + "/rest/v1/competitor_profiles?" + query,
-        headers={
-            "apikey": env["SUPABASE_SERVICE_ROLE_KEY"],
-            "Authorization": "Bearer " + env["SUPABASE_SERVICE_ROLE_KEY"],
-            "Accept": "application/json",
-        },
+        headers=rest_headers(env),
     )
     with urllib.request.urlopen(req, timeout=60) as response:
         rows = json.load(response)
@@ -322,11 +346,7 @@ def fetch_all_input_urls(env):
     query = urllib.parse.urlencode({"select": "input_url"})
     req = urllib.request.Request(
         env["VITE_SUPABASE_URL"].rstrip("/") + "/rest/v1/competitor_profile_inputs?" + query,
-        headers={
-            "apikey": env["SUPABASE_SERVICE_ROLE_KEY"],
-            "Authorization": "Bearer " + env["SUPABASE_SERVICE_ROLE_KEY"],
-            "Accept": "application/json",
-        },
+        headers=rest_headers(env),
     )
     with urllib.request.urlopen(req, timeout=60) as response:
         return [row["input_url"] for row in json.load(response)]
@@ -342,8 +362,8 @@ def fetch_input_url_histogram(env):
         req = urllib.request.Request(
             env["VITE_SUPABASE_URL"].rstrip("/") + "/rest/v1/competitor_posts?" + query,
             headers={
-                "apikey": env["SUPABASE_SERVICE_ROLE_KEY"],
-                "Authorization": "Bearer " + env["SUPABASE_SERVICE_ROLE_KEY"],
+                "apikey": env.get("VITE_SUPABASE_ANON_KEY") or env.get("SUPABASE_SERVICE_ROLE_KEY", ""),
+                "Authorization": auth_header(env),
                 "Accept": "application/json",
             },
         )
@@ -403,9 +423,14 @@ def main():
 
     args = parser.parse_args()
     env = load_env()
-    missing = [k for k in ("VITE_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY") if not env.get(k)]
+    missing = [k for k in ("VITE_SUPABASE_URL",) if not env.get(k)]
+    if not env.get("VITE_SUPABASE_ANON_KEY") and not env.get("SUPABASE_SERVICE_ROLE_KEY"):
+        missing.append("VITE_SUPABASE_ANON_KEY")
     if missing:
-        sys.exit(f"Missing env: {missing}. Expected in {REPO_ENV}")
+        sys.exit(
+            f"Missing env: {missing}. Expected from the Gravitas gateway "
+            f"(~/.gravitas-skills/.env), or a local .env at {REPO_ENV}"
+        )
     args.func(args, env)
 
 
