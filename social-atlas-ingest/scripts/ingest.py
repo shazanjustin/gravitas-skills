@@ -227,6 +227,59 @@ def cmd_own(args, env):
     print(json.dumps(result, indent=2))
 
 
+def print_automation_banner(env):
+    """Say, on every run, that this script is NOT what keeps the data fresh.
+
+    The ingest is driven by a pg_cron job inside the database. That job is
+    invisible from here and invisible from ev, which is precisely how a broken
+    ingest went unnoticed for three and a half months. Anyone reaching for this
+    script should see the real scheduler's state before they start backfilling by
+    hand - a missing month is usually a FAILED RUN, not a missing ingest.
+    """
+    try:
+        req = urllib.request.Request(
+            env["VITE_SUPABASE_URL"].rstrip("/") + "/rest/v1/rpc/social_atlas_cron_status",
+            data=b"{}",
+            headers=rest_headers(env, {"Content-Type": "application/json"}),
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as response:
+            jobs = json.load(response)
+    except Exception:
+        print("!! Could not read the pg_cron scheduler state.", file=sys.stderr)
+        print("   This script is NOT the automation - a pg_cron job is. Check it before backfilling.",
+              file=sys.stderr)
+        print("", file=sys.stderr)
+        return
+
+    print("-" * 78, file=sys.stderr)
+    if not jobs:
+        print("!! NO pg_cron job is driving the ingest. Nothing is keeping this data fresh.",
+              file=sys.stderr)
+    for job in jobs:
+        state = "ACTIVE" if job.get("active") else "*** DISABLED ***"
+        since = job.get("hoursSince")
+        print(
+            f"Automated by pg_cron '{job.get('jobname')}' [{state}] "
+            f"-> {job.get('target')}, schedule '{job.get('schedule')}' UTC",
+            file=sys.stderr,
+        )
+        print(
+            f"  last fired: {job.get('lastFiredAt') or 'never'}"
+            + (f" ({since}h ago)" if since is not None else "")
+            + f", pg_cron status '{job.get('lastStatus')}'",
+            file=sys.stderr,
+        )
+    print("  NOTE: pg_cron 'succeeded' only means the HTTP call was QUEUED. For whether the",
+          file=sys.stderr)
+    print("        ingest actually worked, read ingest_runs or call social-atlas-health.",
+          file=sys.stderr)
+    print("  This script is for ad-hoc work. A missing month is usually a failed run.",
+          file=sys.stderr)
+    print("-" * 78, file=sys.stderr)
+    print("", file=sys.stderr)
+
+
 def cmd_metricool(args, env):
     payload = {
         "network": args.network,
@@ -431,6 +484,7 @@ def main():
             f"Missing env: {missing}. Expected from the Gravitas gateway "
             f"(~/.gravitas-skills/.env), or a local .env at {REPO_ENV}"
         )
+    print_automation_banner(env)
     args.func(args, env)
 
 

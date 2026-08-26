@@ -61,6 +61,16 @@ Never print tokens or keys.
 
 ## This runs automatically - check before you ingest by hand
 
+**The scheduler is a pg_cron job inside the database, not this skill and not ev.**
+It is invisible from both, which is exactly how a broken ingest went unnoticed for
+three and a half months. So it now announces itself in three places instead of
+relying on anyone remembering it:
+
+1. `ingest.py` prints the live pg_cron state before every command
+2. `social-atlas-health` verifies the job exists, is active, and fired recently -
+   and fails loudly if it is missing or disabled
+3. ev's weekday digest names the job and its schedule in the summary line
+
 | Layer | Runs | Cadence |
 |---|---|---|
 | pg_cron `metricool-daily-ingest` | `metricool-auto-ingest`: competitors + own brands via Metricool | daily 21:00 UTC (05:00 MYT) |
