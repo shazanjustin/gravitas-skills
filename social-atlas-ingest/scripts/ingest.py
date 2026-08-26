@@ -37,7 +37,12 @@ def _parse_env_text(text):
     return {k: v for k, v in values.items() if v}
 
 
-GATEWAY_SECRETS = ("SOCIAL_ATLAS_AUTH_EMAIL", "SOCIAL_ATLAS_AUTH_PASSWORD")
+GATEWAY_SECRETS = (
+    "SOCIAL_ATLAS_AUTH_EMAIL",
+    "SOCIAL_ATLAS_AUTH_PASSWORD",
+    "SOCIAL_ATLAS_SUPABASE_URL",
+    "SOCIAL_ATLAS_SUPABASE_ANON_KEY",
+)
 
 
 def _gateway_secret(name, gateway_url, gateway_key):
