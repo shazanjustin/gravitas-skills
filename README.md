@@ -1,28 +1,60 @@
 # Gravitas Skills
 
 Agent skills for Gravitas Digital social-media reporting, competitor
-intelligence, paid-media checks and client deliverables, packaged as a Claude
-Code plugin.
+intelligence, paid-media checks and client deliverables.
+
+The skills live in `skills/`, one folder per skill, as plain Markdown plus
+Python and Node scripts. Every agent below reads that same directory through its
+own thin manifest, so there is only ever one copy of the content.
 
 ## Install
+
+**Claude Code**
 
 ```
 /plugin marketplace add shazanjustin/gravitas-skills
 /plugin install gravitas@gravitas-skills
 ```
 
-You are prompted for the **Gravitas Gateway API key** during install. Ask Shazan
-or your team lead for it. That one key unlocks Metricool, Apify and the
-server-side Meta endpoints from `gateway.shazan.me`, so you never paste an
-individual API key, and nothing is written to a `.env` file on your disk. Claude
-Code stores it in your OS keychain.
+You are prompted for the Gravitas Gateway key during install; Claude Code stores
+it in your OS keychain.
 
-If the install summary says `Run /reload-plugins to activate.`, run that.
+**Codex**
+
+```
+codex plugin marketplace add shazanjustin/gravitas-skills
+codex plugin add gravitas@gravitas-skills
+```
+
+Codex has no config prompt, so set the key yourself:
+`export GRAVITAS_GATEWAY_KEY=...`
+
+**pi**
+
+```
+pi install https://github.com/shazanjustin/gravitas-skills
+```
+
+Same environment variable as Codex.
+
+**Anything else** that reads `SKILL.md` files: clone the repo and point the agent
+at `skills/`.
+
+## The gateway key
+
+Ask Shazan or your team lead for it. That one key unlocks Metricool, Apify and
+the server-side Meta endpoints from `gateway.shazan.me`, so you never paste an
+individual API key.
+
+`GRAVITAS_GATEWAY_KEY` in your environment is the portable way to supply it and
+works under every agent. Claude Code's install prompt is a convenience on top of
+that, not a replacement: skills check the environment variable first.
 
 ## What you get
 
-Skills are namespaced under the plugin, so they appear as `/gravitas:<name>`.
-Claude also loads them on its own when a task matches their description.
+Under Claude Code and Codex the skills are namespaced by the plugin, so they
+appear as `/gravitas:<name>`. Agents also load them on their own when a task
+matches the skill's description.
 
 | Skill | What it does | Gateway |
 |-------|--------------|:---:|
@@ -92,18 +124,21 @@ will work:
 ## Development
 
 ```
-claude --plugin-dir ./plugins/gravitas     # load without installing
-claude plugin validate ./plugins/gravitas
+claude --plugin-dir .        # load without installing
+claude plugin validate .
 ```
 
 Layout:
 
 ```
-.claude-plugin/marketplace.json   the catalog
-plugins/gravitas/
-  .claude-plugin/plugin.json      manifest, and the gateway key prompt
-  skills/<name>/SKILL.md          one folder per skill
+skills/<name>/SKILL.md        the actual content, one folder per skill
+.claude-plugin/plugin.json    plugin manifest, and the Claude Code key prompt
+.claude-plugin/marketplace.json   the catalog; the plugin's source is the repo root
 ```
 
-Bump `version` in `plugins/gravitas/.claude-plugin/plugin.json` so installed
-copies pick up changes on their next auto-update.
+Codex reads `.claude-plugin/` too, so both agents work from one manifest set. To
+add Cursor, Cline, Gemini or Copilot later, add that tool's manifest at the repo
+root pointing at the same `skills/` directory; nothing else moves.
+
+Bump `version` in `.claude-plugin/plugin.json` so installed copies pick up
+changes on their next auto-update.

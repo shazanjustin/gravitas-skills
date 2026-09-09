@@ -7,9 +7,9 @@ description: >
   Gravitas skill that needs an API key, and whenever a Gravitas skill fails with
   a 401, a 409, or a missing-credential error.
 compatibility: |
-  Requires curl. The gateway key comes from the gravitas plugin's own config,
-  collected when the plugin is installed, or from a GRAVITAS_GATEWAY_KEY
-  environment variable in environments that cannot prompt (cloud sessions, CI).
+  Requires curl. The gateway key comes from a GRAVITAS_GATEWAY_KEY environment
+  variable, which works under any agent, or from the gravitas plugin's own
+  config when running under Claude Code.
 ---
 
 # Gravitas Gateway
@@ -26,15 +26,20 @@ when the `gravitas` plugin was installed.
 
 ## Step 1: Resolve the key
 
+**`GRAVITAS_GATEWAY_KEY` is the portable store.** These skills run under Claude
+Code, Codex, pi and anything else that can read a `SKILL.md` and run bash, and an
+environment variable is the only thing all of them share. Claude Code's plugin
+config is a convenience layered on top of it, not a replacement.
+
 Use the first source that yields a non-empty value.
 
 | Order | Source | When it applies |
 |-------|--------|-----------------|
-| 1 | `${user_config.gateway_key}` | Normal local install. Prompted at install time, stored in the OS keychain. |
-| 2 | `$GRAVITAS_GATEWAY_KEY` | Cloud sessions, CI, and anywhere `/plugin` cannot prompt. |
+| 1 | `$GRAVITAS_GATEWAY_KEY` | Every agent, every environment. The portable path. |
+| 2 | `${user_config.gateway_key}` | Claude Code only. Prompted at install, stored in the OS keychain. Other agents leave this token unsubstituted, so treat any value still containing `user_config` as empty. |
 
-The gateway URL resolves the same way: `${user_config.gateway_url}`, else
-`$GRAVITAS_GATEWAY_URL`, else `https://gateway.shazan.me`.
+The gateway URL resolves the same way: `$GRAVITAS_GATEWAY_URL`, else
+`${user_config.gateway_url}`, else `https://gateway.shazan.me`.
 
 Never echo the key, never write it to a file, and never bake it into a script
 you leave on disk. Pass it inline as a header on the call that needs it.
@@ -46,12 +51,14 @@ export GRAVITAS_GATEWAY_KEY=<resolved key>
 export GRAVITAS_GATEWAY_URL="${GRAVITAS_GATEWAY_URL:-https://gateway.shazan.me}"
 ```
 
-If neither source has a value, stop and tell the user:
+If neither source has a value, stop and tell the user, naming the path that fits
+the agent they are actually running:
 
-> No Gravitas Gateway key is configured. Locally, run `/plugin` -> **Installed**
-> -> **gravitas** -> configure, and paste the key from Shazan or your team lead.
-> In a cloud session, add `GRAVITAS_GATEWAY_KEY` to the environment's variables
-> at claude.ai/code.
+> No Gravitas Gateway key is configured. Set `GRAVITAS_GATEWAY_KEY` in your
+> environment (works everywhere), or in Claude Code run `/plugin` ->
+> **Installed** -> **gravitas** -> configure and paste the key from Shazan or
+> your team lead. In a cloud session, add `GRAVITAS_GATEWAY_KEY` to the
+> environment's variables at claude.ai/code.
 
 ---
 
