@@ -1,5 +1,5 @@
 ---
-name: metricool-engagement-rate-xlsx
+name: metricool-engagement-rate-xlsx-v2
 description: >
   Build Metricool per-post engagement-rate proof workbooks for Instagram,
   TikTok, YouTube, and LinkedIn. Use when a user asks for average engagement

@@ -10,9 +10,9 @@ description: |
   table only; supports guarded adds and edits without exposing the NocoDB token.
 compatibility: |
   Requires node (>=18, for global fetch). Uses GRAVITAS_GATEWAY_KEY +
-  GRAVITAS_GATEWAY_WRITE_KEY + GRAVITAS_GATEWAY_URL from
-  ~/.gravitas-skills/.env (already present in the ev container). No NocoDB
-  token is needed or handled here — the gateway holds it server-side.
+  GRAVITAS_GATEWAY_WRITE_KEY + GRAVITAS_GATEWAY_URL from the environment, which
+  the gravitas plugin fills from its own config (the ev container sets them
+  directly). No NocoDB token is needed or handled here — the gateway holds it server-side.
 ---
 
 # Performance Tracker
@@ -171,7 +171,10 @@ paging). The route passes a whitelist of NocoDB read params straight through:
 `limit` (capped at 200), `offset`, `where`, `sort`, `fields`, `viewId`.
 
 ```bash
-source ~/.gravitas-skills/.env
+# GRAVITAS_GATEWAY_KEY comes from the gravitas plugin's config -- load the
+# `gravitas-gateway` skill to resolve it. In cloud sessions and CI it is
+# already an environment variable.
+export GRAVITAS_GATEWAY_URL="${GRAVITAS_GATEWAY_URL:-https://gateway.shazan.me}"
 
 # Read
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \

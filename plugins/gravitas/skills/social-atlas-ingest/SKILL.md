@@ -38,10 +38,10 @@ overridden (`SUPABASE_`-prefixed secrets are reserved), so a plain service-key B
 
 The script therefore signs in as the automation service account and gets its credentials
 from the **Gravitas API Gateway** - this skill contains no secrets. Load the
-`gravitas-gateway` skill first if `~/.gravitas-skills/.env` is not set up yet.
+`gravitas-gateway` skill first if `GRAVITAS_GATEWAY_KEY` is not resolved yet.
 
 ```bash
-# what ingest.py does for you, using ~/.gravitas-skills/.env
+# what ingest.py does for you, using the resolved gateway key
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
   "$GRAVITAS_GATEWAY_URL/secret/SOCIAL_ATLAS_AUTH_EMAIL"
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \

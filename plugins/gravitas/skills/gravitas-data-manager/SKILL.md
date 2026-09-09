@@ -25,10 +25,13 @@ Two paths. One skill. No more routing between separate tools.
 
 Before ANY workflow, fetch shared secrets from the gateway. Load
 `gravitas-gateway` first if it hasn't been loaded this session
-(`cd ~/.gravitas-skills && git pull`, source `.env`).
+-- it resolves the gateway key from the plugin's config.
 
 ```bash
-source ~/.gravitas-skills/.env
+# GRAVITAS_GATEWAY_KEY comes from the gravitas plugin's config -- load the
+# `gravitas-gateway` skill to resolve it. In cloud sessions and CI it is
+# already an environment variable.
+export GRAVITAS_GATEWAY_URL="${GRAVITAS_GATEWAY_URL:-https://gateway.shazan.me}"
 
 # Supabase (Intel App database)
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
@@ -147,7 +150,10 @@ Set the IDs from the selected profile in Step A1; exactly one gateway page must
 match both:
 
 ```bash
-source ~/.gravitas-skills/.env
+# GRAVITAS_GATEWAY_KEY comes from the gravitas plugin's config -- load the
+# `gravitas-gateway` skill to resolve it. In cloud sessions and CI it is
+# already an environment variable.
+export GRAVITAS_GATEWAY_URL="${GRAVITAS_GATEWAY_URL:-https://gateway.shazan.me}"
 PAGES_FILE=$(mktemp)
 PYTHON_BIN=$(command -v python3 || command -v python)
 trap 'rm -f "$PAGES_FILE"' EXIT

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "gravitas-skills",
+  "description": "Agent skills for Gravitas Digital social-media reporting, competitor intelligence, and client deliverables.",
+  "owner": {
+    "name": "Gravitas Digital",
+    "url": "https://github.com/shazanjustin/gravitas-skills"
+  },
+  "plugins": [
+    {
+      "name": "gravitas",
+      "displayName": "Gravitas",
+      "description": "The full Gravitas toolkit: gateway credential layer, Metricool analytics, engagement-rate proof workbooks, competitor pitch research, and client-report writing.",
+      "source": "./plugins/gravitas",
+      "category": "business-marketing",
+      "keywords": ["social-media", "analytics", "metricool", "reporting", "competitor-research"]
+    }
+  ]
+}

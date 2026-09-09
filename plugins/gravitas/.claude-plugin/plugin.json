@@ -1,0 +1,27 @@
+{
+  "name": "gravitas",
+  "displayName": "Gravitas",
+  "version": "1.0.0",
+  "description": "Gravitas Digital agent skills: gateway credentials, Metricool analytics, engagement-rate workbooks, competitor pitch research, and client-report writing.",
+  "author": {
+    "name": "Gravitas Digital"
+  },
+  "repository": "https://github.com/shazanjustin/gravitas-skills",
+  "keywords": ["social-media", "analytics", "metricool", "reporting", "competitor-research"],
+  "userConfig": {
+    "gateway_key": {
+      "type": "string",
+      "title": "Gravitas Gateway API key",
+      "description": "Ask Shazan or your team lead. Unlocks Metricool, Apify, Meta Graph, OpenRouter and Supabase credentials from gateway.shazan.me, so you never paste an individual API key.",
+      "sensitive": true,
+      "required": true
+    },
+    "gateway_url": {
+      "type": "string",
+      "title": "Gateway URL",
+      "description": "Only change this if you are pointing at a staging gateway.",
+      "default": "https://gateway.shazan.me",
+      "required": false
+    }
+  }
+}

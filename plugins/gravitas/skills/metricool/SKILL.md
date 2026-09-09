@@ -57,7 +57,10 @@ automatically — the user never sees or pastes the token.
 
 ```bash
 # Agent workflow:
-source ~/.gravitas-skills/.env
+# GRAVITAS_GATEWAY_KEY comes from the gravitas plugin's config -- load the
+# `gravitas-gateway` skill to resolve it. In cloud sessions and CI it is
+# already an environment variable.
+export GRAVITAS_GATEWAY_URL="${GRAVITAS_GATEWAY_URL:-https://gateway.shazan.me}"
 METRICOOL_TOKEN=$(curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
   "$GRAVITAS_GATEWAY_URL/secret/METRICOOL_TOKEN" | \
   python3 -c "import sys,json; print(json.load(sys.stdin)['value'])")

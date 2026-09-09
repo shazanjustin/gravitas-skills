@@ -24,12 +24,15 @@ analyzes → outputs an executive brief you can present. All AI goes through
 ## Phase 0: Credentials
 
 Before anything, load `gravitas-gateway` if not already loaded this session
-(`cd ~/.gravitas-skills && git pull`, source `.env`).
+-- it resolves the gateway key from the plugin's config.
 
 Fetch shared secrets:
 
 ```bash
-source ~/.gravitas-skills/.env
+# GRAVITAS_GATEWAY_KEY comes from the gravitas plugin's config -- load the
+# `gravitas-gateway` skill to resolve it. In cloud sessions and CI it is
+# already an environment variable.
+export GRAVITAS_GATEWAY_URL="${GRAVITAS_GATEWAY_URL:-https://gateway.shazan.me}"
 
 # Metricool token (FB, YouTube, LinkedIn, TikTok data)
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \

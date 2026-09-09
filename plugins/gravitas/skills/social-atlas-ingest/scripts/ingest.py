@@ -14,12 +14,19 @@ Commands:
 """
 import argparse
 import json
+import os
 import pathlib
 import sys
 import urllib.error
 import urllib.request
 
-REPO_ENV = pathlib.Path("D:/vibe coding stuff/Gravitas Intel App/.env")
+# Intel App checkout, for a laptop working without gateway access. Point
+# SOCIAL_ATLAS_ENV at your own .env; the old hardcoded path is the fallback
+# so existing machines keep working.
+REPO_ENV = pathlib.Path(
+    os.environ.get("SOCIAL_ATLAS_ENV")
+    or "D:/vibe coding stuff/Gravitas Intel App/.env"
+)
 SKILL_ENV = pathlib.Path(__file__).resolve().parent.parent / ".env"
 
 
@@ -67,17 +74,26 @@ def _gateway_secret(name, gateway_url, gateway_key):
 def load_gateway_env():
     """Credentials come from the gateway so this skill holds no secrets itself.
 
-    Reads the gateway key from ~/.gravitas-skills/.env, the same place the
-    gravitas-gateway skill puts it. Absent or unreachable, callers fall back to a
-    local .env, which is how a laptop without gateway access still works.
+    Reads the gateway key from the environment, which the gravitas plugin fills
+    from its own config, falling back to a legacy ~/.gravitas-skills/.env.
+    Absent or unreachable, callers fall back to a local .env, which is how a
+    laptop without gateway access still works.
     """
-    gateway_env = pathlib.Path.home() / ".gravitas-skills" / ".env"
-    if not gateway_env.exists():
-        return {}
-    config = _parse_env_text(gateway_env.read_text(encoding="utf-8", errors="ignore"))
-    url = config.get("GRAVITAS_GATEWAY_URL")
-    key = config.get("GRAVITAS_GATEWAY_KEY")
-    if not url or not key:
+    # The gravitas plugin puts the key in the environment; cloud sessions and CI
+    # set it directly. The legacy ~/.gravitas-skills/.env is the last resort.
+    key = os.environ.get("GRAVITAS_GATEWAY_KEY", "").strip()
+    url = os.environ.get("GRAVITAS_GATEWAY_URL", "").strip()
+
+    if not key:
+        gateway_env = pathlib.Path.home() / ".gravitas-skills" / ".env"
+        if not gateway_env.exists():
+            return {}
+        config = _parse_env_text(gateway_env.read_text(encoding="utf-8", errors="ignore"))
+        url = url or config.get("GRAVITAS_GATEWAY_URL")
+        key = config.get("GRAVITAS_GATEWAY_KEY")
+
+    url = url or "https://gateway.shazan.me"
+    if not key:
         return {}
     fetched = {}
     for name in GATEWAY_SECRETS:

@@ -31,27 +31,49 @@ if str(_DATA_MANAGER_SCRIPTS) not in sys.path:
 
 
 def get_gateway_secret(secret_name: str) -> str:
-    """Fetch a secret from gateway.shazan.me using the .env key."""
-    env_file = Path.home() / ".gravitas-skills" / ".env"
-    if not env_file.exists():
-        raise RuntimeError("~/.gravitas-skills/.env not found. Run gravitas-gateway first.")
+    """Fetch a secret from the Gravitas Gateway.
 
-    # Parse .env
-    env_vars = {}
-    with open(env_file) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
+    The key comes from the environment, which the gravitas plugin populates from
+    its own config, and which cloud sessions and CI set directly. A legacy
+    ~/.gravitas-skills/.env is read as a last resort so older checkouts keep
+    working.
+    """
+    gateway_key = os.environ.get("GRAVITAS_GATEWAY_KEY", "").strip()
+    gateway_url = os.environ.get("GRAVITAS_GATEWAY_URL", "").strip()
+
+    if not gateway_key:
+        legacy = Path.home() / ".gravitas-skills" / ".env"
+        if legacy.exists():
+            for line in legacy.read_text(encoding="utf-8", errors="replace").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
                 k, v = line.split("=", 1)
-                env_vars[k.strip()] = v.strip()
+                # This file has been seen with CRLF endings; rstrip the value so
+                # a trailing carriage return never reaches the request header.
+                k, v = k.strip(), v.strip()
+                if k == "GRAVITAS_GATEWAY_KEY" and not gateway_key:
+                    gateway_key = v
+                elif k == "GRAVITAS_GATEWAY_URL" and not gateway_url:
+                    gateway_url = v
 
-    gateway_key = env_vars.get("GRAVITAS_GATEWAY_KEY", "")
-    gateway_url = env_vars.get("GRAVITAS_GATEWAY_URL", "https://gateway.shazan.me")
+    if not gateway_key:
+        raise RuntimeError(
+            "No Gravitas Gateway key. Configure the gravitas plugin "
+            "(/plugin > Installed > gravitas), or set GRAVITAS_GATEWAY_KEY."
+        )
+
+    gateway_url = gateway_url or "https://gateway.shazan.me"
 
     import urllib.request
     req = urllib.request.Request(
         f"{gateway_url}/secret/{secret_name}",
-        headers={"x-api-key": gateway_key},
+        headers={
+            "x-api-key": gateway_key,
+            # Cloudflare rejects Python's default urllib UA with error 1010 /
+            # HTTP 403 before the request ever reaches the Worker.
+            "User-Agent": "curl/8.4.0",
+        },
     )
     with urllib.request.urlopen(req) as resp:
         data = json.loads(resp.read())

@@ -1,5 +1,5 @@
 ---
-name: social-report-slides
+name: performance-social-report-slides
 description: Generates a PPTX slide deck and an HTML thumbnail gallery from a social media quarterly report Excel file. One slide per post, covering Instagram, TikTok, and YouTube campaigns. This skill should be used when a user provides a social media performance report in .xlsx format and wants to turn it into presentation slides or view post thumbnails.
 ---
 
