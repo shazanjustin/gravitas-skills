@@ -158,13 +158,19 @@ console.log("\nNetwork");
 try {
   const res = await fetch(`${GATEWAY}/secrets`, {
     headers: { "User-Agent": "curl/8.4.0" },
-    signal: AbortSignal.timeout(8000),
+    // Generous: a cold CI runner on a bad day needs well over the 8s this
+    // originally allowed, and a slow answer is not the same as a broken one.
+    signal: AbortSignal.timeout(20000),
   });
   // 401 without a key is the correct, healthy answer.
   if (res.status === 401 || res.ok) pass(`${GATEWAY} reachable`, `(HTTP ${res.status})`);
   else warn(`${GATEWAY} answered oddly`, `HTTP ${res.status}`);
 } catch (e) {
-  fail(`${GATEWAY} unreachable`, e.message);
+  // A warning, not a failure. Whether a third-party host is reachable right now
+  // says nothing about whether this package is correct, and treating it as fatal
+  // makes CI fail for reasons no change here can fix. Anyone running the doctor
+  // to debug their own machine still sees it.
+  warn(`${GATEWAY} unreachable`, `${e.message} (offline, or the gateway is down)`);
 }
 
 // ---------------------------------------------------------------- skills
