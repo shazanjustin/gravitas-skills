@@ -1,0 +1,30 @@
+{
+  "name": "gravitas-skills",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Gravitas Digital agent skills for Claude Code, Codex and pi. Run `npx github:shazanjustin/gravitas-skills` to install.",
+  "keywords": ["pi-package", "claude-code", "codex", "agent-skills", "gravitas"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shazanjustin/gravitas-skills.git"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "gravitas-skills": "scripts/install.mjs"
+  },
+  "scripts": {
+    "install-skills": "node scripts/install.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "lint": "node scripts/lint-skills.mjs",
+    "set-key": "node scripts/set-key.mjs",
+    "update": "node scripts/update.mjs"
+  },
+  "pi": {
+    "skills": ["./skills"],
+    "extensions": ["./extensions"]
+  }
+}
