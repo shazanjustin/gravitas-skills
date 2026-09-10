@@ -61,9 +61,29 @@ Ask Shazan or your team lead for it. That one key unlocks Metricool, Apify and
 the server-side Meta endpoints from `gateway.shazan.me`, so you never paste an
 individual API key.
 
-`GRAVITAS_GATEWAY_KEY` in your environment is the portable way to supply it and
-works under every agent. Claude Code's install prompt is a convenience on top of
-that, not a replacement: skills check the environment variable first.
+Three ways to supply it, all of which keep it out of the model's context:
+
+```
+node scripts/set-key.mjs
+```
+
+Prompts with the input hidden and stores the key encrypted, using Windows DPAPI,
+the macOS Keychain, or libsecret on Linux, falling back to a `0600` file. Works
+for every agent, and verifies the key against the gateway before storing so a
+bad paste fails now rather than somewhere unrelated later.
+
+In Claude Code you can instead use the native prompt, `/plugin configure
+gravitas@gravitas-skills`, which stores to the OS keychain the same way. For
+cloud sessions and CI, set `GRAVITAS_GATEWAY_KEY` as an environment variable.
+
+Skills resolve it in that order: environment first, then Claude Code's plugin
+config, then the credential store.
+
+> **Never paste the key into a chat prompt.** A prompt is an API request to the
+> model provider, and it is written verbatim to that agent's history and
+> transcript files. Deleting the session afterwards does not undo either. Check
+> what is stored with `node scripts/get-key.mjs --check`, which prints presence
+> and length but never the key.
 
 ## What you get
 

@@ -23,7 +23,6 @@ const AGENTS = [
       ["claude", ["plugin", "marketplace", "add", MARKETPLACE]],
       ["claude", ["plugin", "install", "gravitas@gravitas-skills"]],
     ],
-    after: "Set the gateway key: /plugin configure gravitas@gravitas-skills",
   },
   {
     name: "Codex",
@@ -32,13 +31,11 @@ const AGENTS = [
       ["codex", ["plugin", "marketplace", "add", MARKETPLACE]],
       ["codex", ["plugin", "add", "gravitas@gravitas-skills"]],
     ],
-    after: "Codex cannot prompt for config: export GRAVITAS_GATEWAY_KEY=...",
   },
   {
     name: "pi",
     probe: "pi",
     steps: [["pi", ["install", REPO_URL]]],
-    after: "pi cannot prompt for config: export GRAVITAS_GATEWAY_KEY=...",
   },
 ];
 
@@ -54,7 +51,6 @@ function sh(cmd, args, capture = false) {
 
 const installed = [];
 const missing = [];
-const notes = [];
 
 for (const agent of AGENTS) {
   const probe = sh(agent.probe, ["--version"], true);
@@ -68,7 +64,6 @@ for (const agent of AGENTS) {
   // agents, which is not a failure worth aborting the whole run for.
   for (const [cmd, args] of agent.steps) sh(cmd, args);
   installed.push(agent.name);
-  notes.push(`${agent.name}: ${agent.after}`);
 }
 
 console.log("\n" + "=".repeat(72));
@@ -82,9 +77,12 @@ if (missing.length) {
 }
 console.log("=".repeat(72));
 
-if (notes.length) {
-  console.log("\nNext, the gateway key. GRAVITAS_GATEWAY_KEY in your environment");
-  console.log("works for all three at once; per agent:\n");
-  for (const n of notes) console.log("  " + n);
+if (installed.length) {
+  console.log("\nNext, the gateway key. One command covers every agent:\n");
+  console.log("  node scripts/set-key.mjs\n");
+  console.log("It prompts with the input hidden and stores the key encrypted in your OS");
+  console.log("credential store. Never paste a key into a chat prompt: that sends it to");
+  console.log("the model provider and writes it to the agent's transcript, and deleting");
+  console.log("the session afterwards undoes neither.");
 }
 console.log("\nThen restart each agent.");

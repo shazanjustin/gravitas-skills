@@ -54,10 +54,16 @@ behind, so write the subject line as a release note, not as git archaeology.
 24 hours. If you need to work without shipping, branch. `stable` exists for
 teams that want to be promoted to deliberately rather than tracking `main`.
 
-**Credentials never live in this repo.** `GRAVITAS_GATEWAY_KEY` comes from the
-environment, or from Claude Code's plugin config, and skills fetch everything
-else from `gateway.shazan.me` at runtime. Nothing is written to disk. See
-`skills/gravitas-gateway/SKILL.md`.
+**Credentials never live in this repo, and never in a chat prompt.**
+`GRAVITAS_GATEWAY_KEY` comes from the environment, Claude Code's plugin config,
+or the OS credential store via `scripts/set-key.mjs`. Everything else is fetched
+from `gateway.shazan.me` at runtime.
+
+Never ask a user to paste a secret into the chat, and never print one. A prompt
+is an API request to the model provider and is written verbatim to that agent's
+history and transcript files, so deleting the session afterwards undoes neither.
+`scripts/get-key.mjs --check` reports presence and length; the plain form writes
+the key to stdout for shell substitution and must never be read into context.
 
 **Do not edit an installed copy.** Agents keep their own managed copies
 (`~/.claude/plugins/cache/`, `~/.codex/plugins/cache/`,

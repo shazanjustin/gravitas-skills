@@ -35,11 +35,22 @@ Use the first source that yields a non-empty value.
 
 | Order | Source | When it applies |
 |-------|--------|-----------------|
-| 1 | `$GRAVITAS_GATEWAY_KEY` | Every agent, every environment. The portable path. |
+| 1 | `$GRAVITAS_GATEWAY_KEY` | Every agent, every environment. Cloud sessions and CI set it directly. |
 | 2 | `${user_config.gateway_key}` | Claude Code only. Prompted at install, stored in the OS keychain. Other agents leave this token unsubstituted, so treat any value still containing `user_config` as empty. |
+| 3 | `node <plugin root>/scripts/get-key.mjs` | The OS credential store, for Codex and pi, which cannot prompt for config. Exits 1 when nothing is stored. |
 
 The gateway URL resolves the same way: `$GRAVITAS_GATEWAY_URL`, else
 `${user_config.gateway_url}`, else `https://gateway.shazan.me`.
+
+**Never ask the user to paste the key into the chat.** A prompt is an API
+request to the model provider and is written verbatim to that agent's history
+and transcript files, so it cannot be taken back by deleting the session
+afterwards. Point them at `scripts/set-key.mjs`, which reads it with terminal
+echo off and stores it encrypted, without the key ever becoming a token.
+
+When you need to know whether a key exists, run `get-key.mjs --check`, which
+reports presence and length only. The plain form writes the key to stdout for
+shell command substitution: never run that and read the output into context.
 
 Never echo the key, never write it to a file, and never bake it into a script
 you leave on disk. Pass it inline as a header on the call that needs it.
@@ -54,11 +65,12 @@ export GRAVITAS_GATEWAY_URL="${GRAVITAS_GATEWAY_URL:-https://gateway.shazan.me}"
 If neither source has a value, stop and tell the user, naming the path that fits
 the agent they are actually running:
 
-> No Gravitas Gateway key is configured. Set `GRAVITAS_GATEWAY_KEY` in your
-> environment (works everywhere), or in Claude Code run `/plugin` ->
-> **Installed** -> **gravitas** -> configure and paste the key from Shazan or
-> your team lead. In a cloud session, add `GRAVITAS_GATEWAY_KEY` to the
-> environment's variables at claude.ai/code.
+> No Gravitas Gateway key is configured. Run
+> `node <plugin root>/scripts/set-key.mjs`, which prompts with the input hidden
+> and stores the key in your OS credential store. In Claude Code you can instead
+> run `/plugin` -> **Installed** -> **gravitas** -> configure. In a cloud
+> session, add `GRAVITAS_GATEWAY_KEY` to the environment's variables at
+> claude.ai/code. Do not paste the key into this chat.
 
 ---
 
