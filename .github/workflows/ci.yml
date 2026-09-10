@@ -10,11 +10,11 @@ jobs:
     name: Lint skills and manifests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "22"
 
       # Names must match folders and descriptions must stay short. Both are
       # silent failures otherwise: a name mismatch misroutes, and a bloated
@@ -57,7 +57,7 @@ jobs:
     name: Secret scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
