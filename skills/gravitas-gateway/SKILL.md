@@ -221,7 +221,7 @@ The agent uses this table to know which secret to fetch when a skill loads:
 
 | Endpoint | Returns |
 |----------|---------|
-| `GET /secrets` | `{"secrets": ["METRICOOL_TOKEN", "APIFY_API_KEY"]}` — available secret names only, verified live 2026-08-12 |
+| `GET /secrets` | Available secret **names** only. Verified live 2026-09-10: `METRICOOL_TOKEN`, `APIFY_API_KEY`, `SOCIAL_ATLAS_HEALTH_TOKEN`, `SOCIAL_ATLAS_AUTH_EMAIL`, `SOCIAL_ATLAS_AUTH_PASSWORD`, `SOCIAL_ATLAS_SUPABASE_URL`, `SOCIAL_ATLAS_SUPABASE_ANON_KEY`. Call it rather than trusting this list: the gateway gains secrets without this file being updated. |
 | `GET /secret/:name` | `{"name": "...", "value": "..."}` — full secret value |
 
 ### Meta Graph API (Facebook / Instagram)
