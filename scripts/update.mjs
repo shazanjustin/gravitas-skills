@@ -5,15 +5,24 @@
 // daily scheduled task for a hands-off setup. Each agent is skipped silently
 // when its CLI is not on PATH, so the same command works on any machine.
 //
-// Claude Code is deliberately not driven here: it updates plugins natively once
-// auto-update is enabled for the marketplace, and plugin.json declares no
-// `version`, so every push to main resolves to a new commit SHA and ships.
+// Claude Code is included even though it can update natively, because that only
+// happens when auto-update is switched on for the marketplace, and third-party
+// marketplaces have it off by default. One command should not depend on a
+// setting you may never have flipped.
 
 import { spawnSync } from "node:child_process";
 
 const REPO_URL = "https://github.com/shazanjustin/gravitas-skills";
 
 const STEPS = [
+  {
+    agent: "claude code",
+    probe: ["claude", ["--version"]],
+    run: [
+      ["claude", ["plugin", "marketplace", "update", "gravitas-skills"]],
+      ["claude", ["plugin", "update", "gravitas@gravitas-skills"]],
+    ],
+  },
   {
     agent: "codex",
     probe: ["codex", ["--version"]],
@@ -69,4 +78,4 @@ if (updated) {
 if (skipped.length) {
   console.log(`Skipped (not installed): ${skipped.join(", ")}`);
 }
-console.log("Claude Code updates itself; run /plugin marketplace update gravitas-skills to force it.");
+console.log("Restart each agent to pick up the new version.");

@@ -99,8 +99,10 @@ picks up skill changes at session start anyway. To apply:
 node <install path>/scripts/update.mjs
 ```
 
-That updates Codex and pi, and skips whichever is not installed. Run it by hand,
-or put it in a daily scheduled task for a hands-off setup.
+That updates Claude Code, Codex and pi, skipping whichever is not installed.
+Run it by hand, or put it in a daily scheduled task for a hands-off setup.
+Claude Code is included even though it can update natively, because that only
+happens once the auto-update toggle is on.
 
 Wiring, if you need to change it:
 
