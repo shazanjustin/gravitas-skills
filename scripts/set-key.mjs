@@ -131,9 +131,25 @@ async function verify(key) {
   }
 }
 
-const key = process.argv.includes("--stdin")
-  ? await readStdin()
-  : await promptHidden("Gravitas Gateway key (input hidden): ");
+// An agent running this on the user's behalf lands here, because a tool call
+// has no terminal. That is the right outcome: the only way the key could reach
+// this script through an agent is by being typed into the chat first, which is
+// the exact exposure this script exists to avoid. So explain, do not stack trace.
+let key;
+try {
+  key = process.argv.includes("--stdin")
+    ? await readStdin()
+    : await promptHidden("Gravitas Gateway key (input hidden): ");
+} catch {
+  console.error("\nThis needs a real terminal, and it is meant to.");
+  console.error("\nRun it yourself, so the key goes from your keyboard to your");
+  console.error("credential store without passing through an agent:");
+  console.error("\n  node scripts/set-key.mjs");
+  console.error("\nIn Claude Code, prefix it with ! to run it in your own shell.");
+  console.error("Do not paste the key into the chat for an agent to use: that");
+  console.error("sends it to the model provider and writes it to the transcript.");
+  process.exit(1);
+}
 
 if (!key) {
   console.error("No key given. Nothing stored.");
