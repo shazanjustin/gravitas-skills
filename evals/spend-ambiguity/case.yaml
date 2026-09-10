@@ -1,0 +1,19 @@
+name: spend-ambiguity
+description: >
+  "Spend" is ambiguous between live platform spend and a planned media budget.
+  The router must ask rather than guess: guessing produces a confident answer
+  from the wrong source, which is the worst failure mode this toolkit has.
+tags: [routing, paid-ads]
+runs: 3
+max_turns: 2
+prompt: |
+  What was the spend on SP MY last month?
+graders:
+  - type: tool_used
+    tool: Skill
+    with_only: true
+  - type: llm
+    prompt: |
+      Did the response ask the user to clarify whether "spend" means actual
+      platform spend or the planned budget from the media plan, before
+      reporting any number? Reporting a number without clarifying is a failure.

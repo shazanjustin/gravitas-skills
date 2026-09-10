@@ -9,15 +9,25 @@ own thin manifest, so there is only ever one copy of the content.
 
 ## Install
 
+One command, every agent you have:
+
+```
+git clone https://github.com/shazanjustin/gravitas-skills
+node gravitas-skills/scripts/install.mjs
+```
+
+It installs into Claude Code, Codex and pi, and skips whichever you do not have.
+There is no shared registry between the three, so each needs its own install.
+
+<details>
+<summary>Or install per agent by hand</summary>
+
 **Claude Code**
 
 ```
 /plugin marketplace add shazanjustin/gravitas-skills
 /plugin install gravitas@gravitas-skills
 ```
-
-You are prompted for the Gravitas Gateway key during install; Claude Code stores
-it in your OS keychain.
 
 **Codex**
 
@@ -26,19 +36,24 @@ codex plugin marketplace add shazanjustin/gravitas-skills
 codex plugin add gravitas@gravitas-skills
 ```
 
-Codex has no config prompt, so set the key yourself:
-`export GRAVITAS_GATEWAY_KEY=...`
-
 **pi**
 
 ```
 pi install https://github.com/shazanjustin/gravitas-skills
 ```
 
-Same environment variable as Codex.
+**Any agent that reads a shared skills directory**
 
-**Anything else** that reads `SKILL.md` files: clone the repo and point the agent
-at `skills/`.
+```
+npx skills add shazanjustin/gravitas-skills
+```
+
+This installs into `~/.agents/skills/` and symlinks into each agent, so it is
+one copy rather than one per agent. The trade-off is that you get the skill
+files and nothing else: no gateway key prompt, no update check, no `/gravitas:`
+namespace. Set `GRAVITAS_GATEWAY_KEY` yourself if you go this route.
+
+</details>
 
 ## The gateway key
 
@@ -165,6 +180,38 @@ will work:
   prompt for it there. Anyone using that environment can read its variables, so
   use a dedicated environment rather than a shared one.
 
+## Release channels
+
+`main` ships. A push reaches every installed copy within 24 hours, since the
+plugin declares no `version` and resolves to the commit SHA instead.
+
+If you would rather be promoted to deliberately than track `main`, point at the
+`stable` branch, which only moves when someone moves it:
+
+```
+/plugin marketplace add https://github.com/shazanjustin/gravitas-skills.git#stable
+```
+
+Promote with `git push origin main:stable` once `main` looks good.
+
+## Contributing
+
+`AGENTS.md` has the rules that are not obvious, including the two traps this
+repo has already fallen into. Before pushing:
+
+```
+node scripts/lint-skills.mjs
+claude plugin validate .
+```
+
+CI runs both on every push, plus a JSON manifest check, a guard that rejects a
+pinned `version`, and a full-history secret scan.
+
+`evals/` holds cases for `claude plugin eval`, which scores whether a skill
+actually fires against a no-plugin baseline. Run the matching case whenever you
+edit a skill's `description`: that field is the entire trigger mechanism and the
+easiest thing here to break by improving the prose.
+
 ## Development
 
 ```
@@ -176,7 +223,8 @@ Layout:
 
 ```
 skills/<name>/SKILL.md        the actual content, one folder per skill
-scripts/                     update check and update apply
+scripts/                     install, update, update-check, lint
+evals/                       eval cases for claude plugin eval
 hooks/hooks.json             SessionStart wiring for Claude Code and Codex
 extensions/                  pi extension wiring
 .claude-plugin/plugin.json   plugin manifest, and the Claude Code key prompt

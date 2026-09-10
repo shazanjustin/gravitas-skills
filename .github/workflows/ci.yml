@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main, stable]
+  pull_request:
+
+jobs:
+  lint:
+    name: Lint skills and manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Names must match folders and descriptions must stay short. Both are
+      # silent failures otherwise: a name mismatch misroutes, and a bloated
+      # description is billed on every turn of every session.
+      - name: Lint skills
+        run: node scripts/lint-skills.mjs
+
+      - name: Check scripts parse
+        run: |
+          for f in scripts/*.mjs extensions/*.js; do
+            node --check "$f"
+          done
+
+      - name: Validate JSON manifests
+        run: |
+          for f in .claude-plugin/plugin.json \
+                   .claude-plugin/marketplace.json \
+                   .codex-plugin/plugin.json \
+                   .agents/plugins/marketplace.json \
+                   hooks/hooks.json; do
+            node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))" \
+              && echo "ok   $f"
+          done
+
+      # plugin.json must NOT declare a version: setting one pins the plugin and
+      # pushes stop reaching installed copies. See AGENTS.md.
+      - name: Reject a pinned version
+        run: |
+          node -e '
+            const m = JSON.parse(require("fs").readFileSync(".claude-plugin/plugin.json","utf8"));
+            if (m.version) {
+              console.error("plugin.json declares version " + m.version + ".");
+              console.error("That pins the plugin so pushes never reach installed copies.");
+              process.exit(1);
+            }
+            console.log("ok   no pinned version");
+          '
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # This repo is public and its entire subject is credentials, so scan the
+      # full history, not just the diff.
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

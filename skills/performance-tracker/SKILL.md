@@ -1,13 +1,11 @@
 ---
 name: performance-tracker
-description: |
-  Read and edit the team's "Performance" task/deliverables list (NocoDB
-  "Central" base) through the Gravitas gateway: what's assigned, due dates,
-  status, estimated hours, deck links, which Rumah. Use for questions like
-  "what's on the Performance list", "what is Serene working on", "what's due
-  this week", "mark task 42 complete", or "change task 42's due date". Also
-  builds the daily standup digest posted to Discord. One
-  table only; supports guarded adds and edits without exposing the NocoDB token.
+description: >
+  Read and edit the team's "Performance" task list (NocoDB "Central" base) via
+  the Gravitas gateway: assignees, due dates, status, estimated hours, deck
+  links, Rumah. Use for "what's on the Performance list", "what is X working
+  on", "what's due this week", "mark task 42 complete", or "change task 42's due
+  date". Also builds the daily standup digest for Discord.
 compatibility: |
   Requires node (>=18, for global fetch). Uses GRAVITAS_GATEWAY_KEY +
   GRAVITAS_GATEWAY_WRITE_KEY + GRAVITAS_GATEWAY_URL from the environment, which

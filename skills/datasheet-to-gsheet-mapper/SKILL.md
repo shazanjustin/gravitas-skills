@@ -1,14 +1,11 @@
 ---
 name: datasheet-to-gsheet-mapper
 description: >
-  Maps and transforms local social media data CSVs (e.g. from Facebook/IG
-  platform exports) into ready-to-paste formats that match a Google Sheet's
-  column structure exactly. Handles FB and IG data sheets, detects hidden
-  columns, performs intelligent column matching, fills Description from Title
-  (FB), maps Post type to Format, formats Publish Time as mm/dd/yyyy HH:MM,
-  sorts rows oldest-first, and produces clean CSVs with only visible columns.
-  Triggers when the user asks about mapping data to a Google Sheet, preparing
-  data for pasting into a Google Sheet, or creating ready-to-copy datasheets.
+  Map local social media CSV exports (Facebook/Instagram) onto a Google Sheet's
+  exact column structure, producing clean ready-to-paste CSVs. Detects hidden
+  columns and matches columns intelligently. Use when the user asks about
+  mapping data to a Google Sheet, preparing data to paste into a Google Sheet,
+  or creating ready-to-copy datasheets.
 compatibility: |
   Requires Python 3.8+ with the `csv` and `datetime` standard library modules
   (no external dependencies). Uses browser/URL tools to read Google Sheet

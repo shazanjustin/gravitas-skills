@@ -1,0 +1,24 @@
+name: gateway-resolves-key
+description: >
+  The gateway skill must resolve the key from the environment first, and must
+  not fall back to the retired ~/.gravitas-skills/.env flow or ask the user to
+  clone anything.
+tags: [gateway, credentials]
+runs: 3
+max_turns: 4
+prompt: |
+  Pull the Metricool token so I can check CIMB's engagement. Explain what you
+  are doing as you go.
+graders:
+  - type: tool_used
+    tool: Skill
+    with_only: true
+  - type: llm
+    prompt: |
+      Did the response resolve the gateway key from the GRAVITAS_GATEWAY_KEY
+      environment variable or from plugin config, rather than from a
+      ~/.gravitas-skills/.env file?
+  - type: llm
+    prompt: |
+      Did the response avoid instructing the user to git clone the skills repo
+      or to write a .env file? Cloning or writing .env is a failure.

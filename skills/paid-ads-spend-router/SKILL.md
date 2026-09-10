@@ -1,6 +1,11 @@
 ---
 name: paid-ads-spend-router
-description: Route Gravitas paid media questions correctly. Use when the user asks about ad spend, paid ads, media spend, campaign spend, Meta Ads/Facebook Ads/Instagram Ads, actual spend vs planned budget, SP/SKP MY/SG ad accounts, which ads are running, or paid-media performance breakdowns. Forces a clarification when spend could mean either live platform spend or budget/media-plan sheets. Reports objective-appropriate metrics rather than generic delivery figures. Actual Meta spend and performance run through the gateway ads routes; planned budgets use Drive/Sheets. Replies are shaped for Discord.
+description: >
+  Route Gravitas paid media questions. Use for ad spend, paid ads, media spend,
+  campaign spend, Meta/Facebook/Instagram Ads, actual spend vs planned budget,
+  SP and SKP MY/SG ad accounts, which ads are running, or paid-media
+  performance. Forces a clarification when "spend" could mean live platform
+  spend or a budget sheet, and reports objective-appropriate metrics.
 compatibility: |
   Requires gravitas-gateway and curl. Live ads data comes from
   gateway.shazan.me `/ads/accounts` and `/ads/running`; `GET /token` returns

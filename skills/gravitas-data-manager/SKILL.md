@@ -1,14 +1,12 @@
 ---
 name: gravitas-data-manager
 description: >
-  Single entry point for ALL Gravitas social/reporting data across Facebook,
-  Instagram, and TikTok. Two clean paths: pull your own brand's data (Metricool
-  plus official exports when needed), or pull competitor data (Instaloader/Apify public
-  scrape). Owns the Intel App database, cross-platform workbook assembly,
-  manual data handling, and QA. Load this when the user wants social
-  engagement reports, competitor analysis, collab-aware Instagram data,
-  Apify scraping, Metricool TikTok analytics, database-backed proof
-  workbooks, or multi-platform reconciliation.
+  Single entry point for all Gravitas social data across Facebook, Instagram and
+  TikTok: own-brand via Metricool and official exports, competitors via
+  Instaloader or Apify. Owns the Intel App database and cross-platform workbook
+  assembly. Use for social engagement reports, competitor analysis, collab-aware
+  Instagram data, Apify scraping, Metricool TikTok analytics, or multi-platform
+  reconciliation.
 compatibility: |
   Requires Python 3.8+, curl, git. Shared secrets (Apify, Metricool,
   Supabase) and safe Meta account discovery via gravitas-gateway → gateway.shazan.me.

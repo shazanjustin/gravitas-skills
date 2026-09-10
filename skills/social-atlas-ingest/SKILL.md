@@ -1,6 +1,12 @@
 ---
 name: social-atlas-ingest
-description: Add competitor posts to the Social Atlas (Gravitas Intel App) Supabase database the way the app itself does it. Meta (Facebook/Instagram) and YouTube/X competitor posts come from the Metricool competitors API; TikTok comes from Apify clockworks/tiktok-scraper; LinkedIn comes from an Apify dataset import. Use when Shazan wants to ingest, backfill, or automate adding competitor posts into Social Atlas, or verify post coverage per platform.
+description: >
+  Add competitor posts to the Social Atlas (Gravitas Intel App) Supabase
+  database the way the app does: Meta and YouTube/X via the Metricool
+  competitors API, TikTok via Apify, LinkedIn via an Apify dataset import. Use
+  to ingest, backfill or automate competitor posts, or to verify post coverage
+  per platform.
+
 ---
 
 # Social Atlas Competitor Post Ingestion

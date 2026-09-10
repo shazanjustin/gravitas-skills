@@ -1,0 +1,18 @@
+{
+  "name": "gravitas",
+  "displayName": "Gravitas",
+  "description": "Gravitas Digital agent skills: gateway credentials, Metricool analytics, engagement-rate workbooks, competitor pitch research, and client-report writing.",
+  "author": {
+    "name": "Gravitas Digital"
+  },
+  "repository": "https://github.com/shazanjustin/gravitas-skills",
+  "keywords": [
+    "social-media",
+    "analytics",
+    "metricool",
+    "reporting",
+    "competitor-research"
+  ],
+  "hooks": "./hooks/hooks.json",
+  "skills": "./skills/"
+}

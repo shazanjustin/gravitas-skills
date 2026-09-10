@@ -1,0 +1,20 @@
+name: metricool-er-routing
+description: >
+  An engagement-rate workbook request should reach the engagement-rate skill,
+  not the general metricool skill. These two overlap heavily and the routing
+  between them is exactly what a description edit can break.
+tags: [routing, metricool]
+runs: 3
+max_turns: 3
+prompt: |
+  I need a per-post engagement rate proof workbook for our Instagram and TikTok
+  accounts for last month, as an xlsx.
+graders:
+  - type: tool_used
+    tool: Skill
+    with_only: true
+  - type: llm
+    prompt: |
+      Did the response route to a Metricool engagement-rate workbook skill
+      (metricool-engagement-rate-xlsx or its v2), rather than to the general
+      metricool API skill or to a manual approach?

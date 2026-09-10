@@ -21,3 +21,17 @@ metricool-api-en.pdf
 
 # Local planning/docs (kept off GitHub)
 docs/
+
+# Local working artifacts. This repo doubles as a dev checkout, so scratch data
+# accumulates at the root; keeping it named here stops `git add -A` from
+# sweeping it into a commit.
+*.xlsx
+*.png
+*.tsv
+outputs/
+looker_sections/
+cimb_metricool_raw_*/
+cimb_*.json
+build_*.py
+tmp_*.py
+nul
