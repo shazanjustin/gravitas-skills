@@ -131,6 +131,7 @@ matches the skill's description.
 | `social-thumbnail-fetcher` | Instagram and TikTok post URLs into direct thumbnail image URLs | — |
 | `client-friendly-report-writer` | Raw metrics into calm, client-facing report copy | — |
 | `datasheet-to-gsheet-mapper` | Messy Metricool CSVs into a target Google Sheet's exact columns | — |
+| `composio-gws` | Google Sheets, Slides and Drive via Composio: read/write sheets, build decks, find files | see note |
 | `fill-linkedin-content-types` | Classify LinkedIn posts into content types | — |
 | `youtube-publish-date-bulk` | Bulk YouTube URLs into publish dates, sheet-ready | — |
 
@@ -161,6 +162,12 @@ anything that can list your processes; the Keychain is still a better resting
 place than a file, so that trade is taken deliberately. On Linux, `secret-tool`
 needs an unlocked keyring, which a headless session usually does not have, and
 falls back to the file.
+
+> **`composio-gws` needs credentials the gateway does not hold yet.** It looks
+> for `COMPOSIO_API_KEY` and `COMPOSIO_EXTERNAL_USER_ID` on the gateway, but as
+> of 2026-09-10 they are not there. Until someone adds them with
+> `wrangler secret put`, set both in your environment. Every other gateway-backed
+> skill works from the one gateway key.
 
 ## Staying up to date
 
