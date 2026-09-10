@@ -102,9 +102,14 @@ if (installed.length) {
       console.log("  node scripts/set-key.mjs");
     }
   } else {
-    // Piped or run by an agent: no terminal to prompt on.
-    console.log("\nOne thing left: the Gravitas Gateway key. Run this in your terminal:");
-    console.log("  node scripts/set-key.mjs");
+    // Piped, or run through an agent. An agent's shell-out is not a TTY either,
+    // including Claude Code's `!` prefix, so "run it in your terminal" is
+    // ambiguous exactly when it matters most. Name the terminal.
+    console.log("\nOne thing left: the Gravitas Gateway key.");
+    console.log("\nThis needs a real terminal window (PowerShell, Terminal, iTerm).");
+    console.log("Running it through an agent lands you back here, because the prompt");
+    console.log("reads your keystrokes directly rather than through a model:\n");
+    console.log(`  node "${join(HERE, "set-key.mjs")}"`);
   }
 }
 console.log("\nThen restart each agent.");

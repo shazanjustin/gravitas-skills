@@ -24,6 +24,7 @@ import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
 
 const SERVICE = "gravitas-gateway-key";
 const ACCOUNT = "gravitas";
@@ -141,13 +142,16 @@ try {
     ? await readStdin()
     : await promptHidden("Gravitas Gateway key (input hidden): ");
 } catch {
-  console.error("\nThis needs a real terminal, and it is meant to.");
-  console.error("\nRun it yourself, so the key goes from your keyboard to your");
-  console.error("credential store without passing through an agent:");
-  console.error("\n  node scripts/set-key.mjs");
-  console.error("\nIn Claude Code, prefix it with ! to run it in your own shell.");
-  console.error("Do not paste the key into the chat for an agent to use: that");
-  console.error("sends it to the model provider and writes it to the transcript.");
+  console.error("\nThis needs a real terminal window, and it is meant to.");
+  console.error("\nAn agent shelling out does not count, including Claude Code's !");
+  console.error("prefix: the prompt reads your keystrokes directly, which is the whole");
+  console.error("point, so it cannot run anywhere a model sits in between.");
+  console.error("\nOpen PowerShell, Terminal or iTerm and run:\n");
+  console.error(`  node "${fileURLToPath(import.meta.url)}"`);
+  console.error("\nOr pipe the key in, if you already have it in a variable:");
+  console.error("  echo $KEY | node set-key.mjs --stdin");
+  console.error("\nDo not paste the key into a chat for an agent to use: that sends it");
+  console.error("to the model provider and writes it to the transcript.");
   process.exit(1);
 }
 
