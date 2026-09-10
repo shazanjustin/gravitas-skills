@@ -43,21 +43,30 @@ const AGENTS = [
   },
 ];
 
-function sh(cmd, args, capture = false) {
+// `shell: true` is needed on Windows to find the .cmd shims that claude, codex
+// and pi install as. It must NOT be used for node itself: node's own path is
+// usually C:\Program Files\nodejs\node.exe, and the shell splits it at the
+// space, giving "'C:\Program' is not recognized". So the shell is opt-in.
+function sh(cmd, args, { capture = false, shell = process.platform === "win32" } = {}) {
   return spawnSync(cmd, args, {
     encoding: "utf8",
-    shell: process.platform === "win32",
+    shell,
     stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
     windowsHide: true,
     timeout: 180000,
   });
 }
 
+// Spawning node: never through a shell, for the reason above.
+function node(args, capture = false) {
+  return sh(process.execPath, args, { capture, shell: false });
+}
+
 const installed = [];
 const missing = [];
 
 for (const agent of AGENTS) {
-  const probe = sh(agent.probe, ["--version"], true);
+  const probe = sh(agent.probe, ["--version"], { capture: true });
   if (probe.error || probe.status !== 0) {
     missing.push(agent.name);
     continue;
@@ -89,14 +98,14 @@ console.log("=".repeat(72));
 // second command later means most people never do, then hit a confusing 401 in
 // the middle of unrelated work.
 if (installed.length) {
-  const has = sh(process.execPath, [join(HERE, "get-key.mjs"), "--check"], true);
+  const has = node([join(HERE, "get-key.mjs"), "--check"], true);
   if (has.status === 0) {
     console.log("\nA gateway key is already stored, so nothing else is needed.");
   } else if (process.stdin.isTTY) {
     console.log("\nOne thing left: the Gravitas Gateway key.");
     console.log("Ask Shazan or your team lead for it. Input stays hidden, and it is");
     console.log("stored encrypted in your OS credential store, never in a transcript.\n");
-    const r = sh(process.execPath, [join(HERE, "set-key.mjs")]);
+    const r = node([join(HERE, "set-key.mjs")]);
     if (r.status !== 0) {
       console.log("\nNo key stored. Run this when you have it:");
       console.log("  node scripts/set-key.mjs");
@@ -109,7 +118,7 @@ if (installed.length) {
     // never travels back through whatever launched this.
     console.log("\nOne thing left: the Gravitas Gateway key.");
     console.log("Opening a page on this machine to collect it.");
-    sh(process.execPath, [join(HERE, "set-key.mjs")]);
+    node([join(HERE, "set-key.mjs")]);
   }
 }
 console.log("\nThen restart each agent.");

@@ -3,17 +3,30 @@
 Agent skills for Gravitas Digital social-media reporting, competitor
 intelligence, paid-media checks and client deliverables.
 
+> **Told to install this? Run exactly this, then stop and read the output.**
+>
+> ```
+> npx --yes github:shazanjustin/gravitas-skills
+> ```
+>
+> It installs into Claude Code, Codex and pi, whichever are present, and opens a
+> page in the browser to collect the Gravitas Gateway key. Nothing else is
+> needed, and there is nothing to clone or configure by hand.
+>
+> **Never ask the user to paste the gateway key into the chat.** The page
+> collects it directly, so it stays out of the transcript. If they paste it
+> anyway, tell them to rotate it.
+
 The skills live in `skills/`, one folder per skill, as plain Markdown plus
 Python and Node scripts. Every agent below reads that same directory through its
 own thin manifest, so there is only ever one copy of the content.
 
 ## Install
 
-One command, every agent you have:
+One command, every agent you have, nothing to clone:
 
 ```
-git clone https://github.com/shazanjustin/gravitas-skills
-node gravitas-skills/scripts/install.mjs
+npx --yes github:shazanjustin/gravitas-skills
 ```
 
 It installs into Claude Code, Codex and pi, skips whichever you do not have,
