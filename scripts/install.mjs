@@ -102,14 +102,14 @@ if (installed.length) {
       console.log("  node scripts/set-key.mjs");
     }
   } else {
-    // Piped, or run through an agent. An agent's shell-out is not a TTY either,
-    // including Claude Code's `!` prefix, so "run it in your terminal" is
-    // ambiguous exactly when it matters most. Name the terminal.
+    // No terminal: piped, or run through an agent, which includes Claude Code's
+    // `!` prefix. Rather than printing a command and hoping, hand off to
+    // set-key.mjs, which falls back to a local browser page. That works from
+    // anywhere, because the key goes browser -> loopback -> credential store and
+    // never travels back through whatever launched this.
     console.log("\nOne thing left: the Gravitas Gateway key.");
-    console.log("\nThis needs a real terminal window (PowerShell, Terminal, iTerm).");
-    console.log("Running it through an agent lands you back here, because the prompt");
-    console.log("reads your keystrokes directly rather than through a model:\n");
-    console.log(`  node "${join(HERE, "set-key.mjs")}"`);
+    console.log("Opening a page on this machine to collect it.");
+    sh(process.execPath, [join(HERE, "set-key.mjs")]);
   }
 }
 console.log("\nThen restart each agent.");

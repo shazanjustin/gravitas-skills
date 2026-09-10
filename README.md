@@ -72,10 +72,17 @@ Three ways to supply it, all of which keep it out of the model's context:
 node scripts/set-key.mjs
 ```
 
-Prompts with the input hidden and stores the key encrypted, using Windows DPAPI,
-the macOS Keychain, or libsecret on Linux, falling back to a `0600` file. Works
-for every agent, and verifies the key against the gateway before storing so a
-bad paste fails now rather than somewhere unrelated later.
+In a terminal it prompts with the input hidden. Anywhere without a terminal,
+including when an agent runs it for you, it opens a small page on
+`127.0.0.1` instead, with a random port and a random URL, and shuts the page
+down the moment the key is saved. Either way the key is checked against the
+gateway before anything is written, then stored encrypted using Windows DPAPI,
+the macOS Keychain, or libsecret on Linux, falling back to a `0600` file.
+
+The browser path matters more than it sounds: a hidden terminal prompt cannot
+run anywhere a model sits in between, which is exactly where a newcomer being
+onboarded usually is. The page can be opened by the agent while the key still
+travels browser to loopback to credential store, never back through the model.
 
 In Claude Code you can instead use the native prompt, `/plugin configure
 gravitas@gravitas-skills`, which stores to the OS keychain the same way. For

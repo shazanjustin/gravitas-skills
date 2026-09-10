@@ -24,7 +24,7 @@ import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { fileURLToPath } from "node:url";
+import { promptViaBrowser } from "./key-web.mjs";
 
 const SERVICE = "gravitas-gateway-key";
 const ACCOUNT = "gravitas";
@@ -132,38 +132,58 @@ async function verify(key) {
   }
 }
 
-// An agent running this on the user's behalf lands here, because a tool call
-// has no terminal. That is the right outcome: the only way the key could reach
-// this script through an agent is by being typed into the chat first, which is
-// the exact exposure this script exists to avoid. So explain, do not stack trace.
-let key;
-try {
-  key = process.argv.includes("--stdin")
-    ? await readStdin()
-    : await promptHidden("Gravitas Gateway key (input hidden): ");
-} catch {
-  console.error("\nThis needs a real terminal window, and it is meant to.");
-  console.error("\nAn agent shelling out does not count, including Claude Code's !");
-  console.error("prefix: the prompt reads your keystrokes directly, which is the whole");
-  console.error("point, so it cannot run anywhere a model sits in between.");
-  console.error("\nOpen PowerShell, Terminal or iTerm and run:\n");
-  console.error(`  node "${fileURLToPath(import.meta.url)}"`);
-  console.error("\nOr pipe the key in, if you already have it in a variable:");
-  console.error("  echo $KEY | node set-key.mjs --stdin");
-  console.error("\nDo not paste the key into a chat for an agent to use: that sends it");
-  console.error("to the model provider and writes it to the transcript.");
-  process.exit(1);
+const skipVerify = process.argv.includes("--no-verify");
+const checkKey = skipVerify ? async () => "valid" : verify;
+
+function finish(where) {
+  console.log(`Stored in: ${where}`);
+  console.log("\nThe key was never sent to a model and is not in any transcript.");
+  console.log("Skills read it back automatically. To check:  node scripts/get-key.mjs --check");
 }
 
-if (!key) {
-  console.error("No key given. Nothing stored.");
-  process.exit(1);
-}
-
-if (!process.argv.includes("--no-verify")) {
-  const state = await verify(key);
+// Piped input wins: it is explicit, and it is how CI and scripts drive this.
+if (process.argv.includes("--stdin")) {
+  const key = await readStdin();
+  if (!key) {
+    console.error("No key given. Nothing stored.");
+    process.exit(1);
+  }
+  const state = await checkKey(key);
   if (state === "rejected") {
-    console.error(`\nThe gateway rejected that key (401). Nothing stored.`);
+    console.error("\nThe gateway rejected that key (401). Nothing stored.");
+    console.error("Check you copied the whole thing, then try again.");
+    process.exit(1);
+  }
+  if (state === "unreachable") {
+    console.error(`\nCould not reach ${GATEWAY} to check the key. Storing it unverified.`);
+  }
+  finish(store(key));
+  process.exit(0);
+}
+
+// A real terminal gets the hidden prompt: fastest path, no browser needed.
+// Everywhere else, including every agent, gets a local browser page. A tool
+// call has no TTY, but it can still open a window on the user's screen, and the
+// key then travels browser -> loopback -> credential store without ever passing
+// back through the model. `--terminal` forces the old behaviour.
+const wantsTerminal = process.argv.includes("--terminal");
+
+if (process.stdin.isTTY || wantsTerminal) {
+  let key;
+  try {
+    key = await promptHidden("Gravitas Gateway key (input hidden): ");
+  } catch {
+    console.error("\nNo terminal available for a hidden prompt.");
+    console.error("Drop --terminal to use the browser page instead.");
+    process.exit(1);
+  }
+  if (!key) {
+    console.error("No key given. Nothing stored.");
+    process.exit(1);
+  }
+  const state = await checkKey(key);
+  if (state === "rejected") {
+    console.error("\nThe gateway rejected that key (401). Nothing stored.");
     console.error("Check you copied the whole thing, then try again.");
     process.exit(1);
   }
@@ -172,10 +192,25 @@ if (!process.argv.includes("--no-verify")) {
   } else {
     console.log("\nGateway accepted the key.");
   }
+  finish(store(key));
+  process.exit(0);
 }
 
-const where = store(key);
+const result = await promptViaBrowser({
+  verify: checkKey,
+  store,
+  gateway: GATEWAY,
+  autoOpen: !process.argv.includes("--no-open"),
+});
 
-console.log(`Stored in: ${where}`);
-console.log("\nThe key was never sent to a model and is not in any transcript.");
-console.log("Skills read it back automatically. To check:  node scripts/get-key.mjs --check");
+if (!result) {
+  console.error("\nNo key was entered before the page timed out. Nothing stored.");
+  process.exit(1);
+}
+
+if (!result.verified) {
+  console.error(`\nCould not reach ${GATEWAY} to check the key. Stored it unverified.`);
+} else {
+  console.log("\nGateway accepted the key.");
+}
+finish(result.where);
