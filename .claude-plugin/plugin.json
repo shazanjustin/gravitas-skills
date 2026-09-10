@@ -1,7 +1,6 @@
 {
   "name": "gravitas",
   "displayName": "Gravitas",
-  "version": "1.1.0",
   "description": "Gravitas Digital agent skills: gateway credentials, Metricool analytics, engagement-rate workbooks, competitor pitch research, and client-report writing.",
   "author": {
     "name": "Gravitas Digital"
@@ -29,5 +28,6 @@
       "default": "https://gateway.shazan.me",
       "required": false
     }
-  }
+  },
+  "hooks": "./hooks/hooks.json"
 }

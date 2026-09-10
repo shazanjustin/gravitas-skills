@@ -74,6 +74,48 @@ matches the skill's description.
 | `fill-linkedin-content-types` | Classify LinkedIn posts into content types | — |
 | `youtube-publish-date-bulk` | Bulk YouTube URLs into publish dates, sheet-ready | — |
 
+## Staying up to date
+
+`main` is the release channel. `plugin.json` declares no `version`, so the
+version resolves to the commit SHA and every push is a new version by
+definition, with no manual bump to forget.
+
+**Claude Code updates itself.** Turn it on once: `/plugin` -> **Marketplaces**
+-> gravitas-skills -> **Enable auto-update**. Third-party marketplaces have it
+off by default. Claude Code then checks shortly after each session starts and
+loads the new version on your next launch.
+
+**Codex and pi have no auto-update**, so this repo ships its own check. At
+session start, at most once every 24 hours per machine, it asks GitHub for
+`main`'s commit SHA and compares it to what you have. Every other session start
+reads a local stamp file and exits in milliseconds. When you are behind, it
+prints a banner naming the commits you are missing and the command to run.
+
+It never applies the update itself: rewriting the plugin cache the agent is
+reading at that exact moment is a race worth avoiding, and every agent only
+picks up skill changes at session start anyway. To apply:
+
+```
+node <install path>/scripts/update.mjs
+```
+
+That updates Codex and pi, and skips whichever is not installed. Run it by hand,
+or put it in a daily scheduled task for a hands-off setup.
+
+Wiring, if you need to change it:
+
+| File | Used by |
+|------|---------|
+| `scripts/update-check.mjs` | the check itself, shared by all three agents |
+| `hooks/hooks.json` | Claude Code and Codex, `SessionStart` |
+| `extensions/gravitas-update-check.js` | pi, `session_start` |
+| `scripts/update.mjs` | applies the update |
+
+Set `GRAVITAS_UPDATE_STAMP` to move the stamp file. Pass `--force` to
+`update-check.mjs` to ignore the 24-hour throttle. Every failure path is silent
+by design: offline, no git, unwritable home directory, all exit quietly rather
+than delay a session.
+
 ## Using it on a team repo
 
 A plugin installed with `/plugin` lives in `~/.claude/plugins/` on that machine
@@ -132,13 +174,17 @@ Layout:
 
 ```
 skills/<name>/SKILL.md        the actual content, one folder per skill
-.claude-plugin/plugin.json    plugin manifest, and the Claude Code key prompt
-.claude-plugin/marketplace.json   the catalog; the plugin's source is the repo root
+scripts/                     update check and update apply
+hooks/hooks.json             SessionStart wiring for Claude Code and Codex
+extensions/                  pi extension wiring
+.claude-plugin/plugin.json   plugin manifest, and the Claude Code key prompt
+.claude-plugin/marketplace.json   the catalog; the plugin source is the repo root
 ```
 
 Codex reads `.claude-plugin/` too, so both agents work from one manifest set. To
 add Cursor, Cline, Gemini or Copilot later, add that tool's manifest at the repo
 root pointing at the same `skills/` directory; nothing else moves.
 
-Bump `version` in `.claude-plugin/plugin.json` so installed copies pick up
-changes on their next auto-update.
+Do not add a `version` to `.claude-plugin/plugin.json`. Setting it pins the
+plugin, so pushes stop reaching installed copies until someone remembers to bump
+it; leaving it out makes every commit its own version.

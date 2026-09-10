@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/update-check.mjs\"",
+            "timeout": 5,
+            "statusMessage": "Checking for Gravitas skills updates..."
+          }
+        ]
+      }
+    ]
+  }
+}
