@@ -86,6 +86,18 @@ function shortSha(sha) {
   return sha ? sha.slice(0, 8) : "unknown";
 }
 
+// Each agent caches this copy somewhere deep in its own tree, and printing that
+// absolute path is both ugly and longer than the command it replaces. We know
+// which agent is running us from where we are, so print its own one-liner.
+function updateCommand() {
+  const p = ROOT.replace(/\\/g, "/");
+  if (p.includes("/.claude/")) return "claude plugin update gravitas@gravitas-skills";
+  if (p.includes("/.codex/")) return "codex plugin marketplace upgrade gravitas-skills";
+  if (p.includes("/.pi/")) return `pi update --extension ${REPO.replace(/\.git$/, "")}`;
+  // A dev checkout, or an agent we do not recognise: update everything.
+  return `node "${join(ROOT, "scripts", "update.mjs")}"`;
+}
+
 function subjectsBetween(from, to) {
   let dir = ROOT;
   for (let i = 0; i < 4; i++) {
@@ -164,7 +176,7 @@ function main() {
   lines.push("");
   lines.push("Updating takes effect in your next session.");
 
-  box(lines, ["", "  Run:", `    node "${join(ROOT, "scripts", "update.mjs")}"`]);
+  box(lines, ["", "  Run:", "    " + updateCommand()]);
 }
 
 try {
