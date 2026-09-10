@@ -11,6 +11,10 @@
 // Safe to re-run. Each agent treats a second install as a no-op or an update.
 
 import { spawnSync } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 const MARKETPLACE = "shazanjustin/gravitas-skills";
 const REPO_URL = "https://github.com/shazanjustin/gravitas-skills";
@@ -77,12 +81,30 @@ if (missing.length) {
 }
 console.log("=".repeat(72));
 
+// Ask for the key right here, while we still have the user's terminal.
+//
+// This is the only moment in the whole flow where a hidden prompt is possible:
+// the user typed this command themselves, so stdin is a real TTY. Codex and pi
+// have no install-time config prompt of their own, and telling someone to run a
+// second command later means most people never do, then hit a confusing 401 in
+// the middle of unrelated work.
 if (installed.length) {
-  console.log("\nNext, the gateway key. One command covers every agent:\n");
-  console.log("  node scripts/set-key.mjs\n");
-  console.log("It prompts with the input hidden and stores the key encrypted in your OS");
-  console.log("credential store. Never paste a key into a chat prompt: that sends it to");
-  console.log("the model provider and writes it to the agent's transcript, and deleting");
-  console.log("the session afterwards undoes neither.");
+  const has = sh(process.execPath, [join(HERE, "get-key.mjs"), "--check"], true);
+  if (has.status === 0) {
+    console.log("\nA gateway key is already stored, so nothing else is needed.");
+  } else if (process.stdin.isTTY) {
+    console.log("\nOne thing left: the Gravitas Gateway key.");
+    console.log("Ask Shazan or your team lead for it. Input stays hidden, and it is");
+    console.log("stored encrypted in your OS credential store, never in a transcript.\n");
+    const r = sh(process.execPath, [join(HERE, "set-key.mjs")]);
+    if (r.status !== 0) {
+      console.log("\nNo key stored. Run this when you have it:");
+      console.log("  node scripts/set-key.mjs");
+    }
+  } else {
+    // Piped or run by an agent: no terminal to prompt on.
+    console.log("\nOne thing left: the Gravitas Gateway key. Run this in your terminal:");
+    console.log("  node scripts/set-key.mjs");
+  }
 }
 console.log("\nThen restart each agent.");

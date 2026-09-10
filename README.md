@@ -16,8 +16,13 @@ git clone https://github.com/shazanjustin/gravitas-skills
 node gravitas-skills/scripts/install.mjs
 ```
 
-It installs into Claude Code, Codex and pi, and skips whichever you do not have.
-There is no shared registry between the three, so each needs its own install.
+It installs into Claude Code, Codex and pi, skips whichever you do not have,
+then asks for your gateway key with the input hidden and stores it encrypted.
+That is the whole setup. There is no shared registry between the three agents,
+so each needs its own install.
+
+If you install some other way and skip the key, every agent prints a banner at
+session start telling you so, until you set one.
 
 <details>
 <summary>Or install per agent by hand</summary>

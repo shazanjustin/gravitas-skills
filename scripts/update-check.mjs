@@ -116,12 +116,12 @@ function subjectsBetween(from, to) {
 // The box stays a fixed, terminal-friendly width. An install path can run well
 // past 80 characters, so the command goes underneath rather than inside, where
 // it would either overflow the border or force it absurdly wide.
-function box(lines, after) {
+function box(lines, after, heading = "GRAVITAS SKILLS: UPDATE AVAILABLE") {
   const bar = "=".repeat(72);
   const out = [
     "",
     bar,
-    "  GRAVITAS SKILLS: UPDATE AVAILABLE",
+    "  " + heading,
     bar,
     ...lines.map((l) => (l ? "  " + l : "")),
     bar,
@@ -131,9 +131,39 @@ function box(lines, after) {
   process.stdout.write(out.join("\n") + "\n");
 }
 
+// Deliberately not throttled. A missing key is not news that goes stale: it
+// blocks every gateway-backed skill, and the check is a local file read costing
+// about a millisecond. Someone who installed without running install.mjs would
+// otherwise discover this as a 401 in the middle of unrelated work.
+function keyMissingNotice() {
+  const r = spawnSync(process.execPath, [join(HERE, "get-key.mjs"), "--check"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+    timeout: 4000,
+    windowsHide: true,
+  });
+  if (!r.error && r.status === 0) return false;
+
+  box(
+    [
+      "No Gravitas Gateway key is set, so every skill that needs",
+      "credentials will fail. Ask Shazan or your team lead for the key.",
+      "",
+      "Input stays hidden and the key is stored encrypted. Do not paste",
+      "it into a chat: that sends it to the model provider and writes it",
+      "to this session's transcript.",
+    ],
+    ["", "  Run:", `    node "${join(ROOT, "scripts", "set-key.mjs")}"`],
+    "GRAVITAS SKILLS: NO GATEWAY KEY"
+  );
+  return true;
+}
+
 function main() {
   const now = Date.now();
   const stamp = readStamp();
+
+  keyMissingNotice();
 
   if (process.argv.includes("--force")) {
     // fall through
