@@ -93,6 +93,12 @@ function store(key) {
   }
 
   if (plat === "darwin") {
+    // `security` takes the password as an argument and offers no stdin form, so
+    // unlike the other two branches the value is briefly visible to anything
+    // that can list this user's processes. The Keychain is still the better
+    // resting place than a file on disk, so this accepts the short exposure
+    // rather than downgrading to the fallback. Run scripts/doctor.mjs on a Mac
+    // to confirm the write-and-read-back round trip actually works there.
     const r = spawnSync(
       "security",
       ["add-generic-password", "-U", "-a", ACCOUNT, "-s", SERVICE, "-w", key],

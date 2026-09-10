@@ -121,6 +121,34 @@ matches the skill's description.
 | `fill-linkedin-content-types` | Classify LinkedIn posts into content types | — |
 | `youtube-publish-date-bulk` | Bulk YouTube URLs into publish dates, sheet-ready | — |
 
+## Checking a machine
+
+```
+node scripts/doctor.mjs
+```
+
+Exercises every path that differs by operating system: the credential store
+(with a full write-and-read-back round trip on a throwaway name, so your real
+key is never touched), the browser opener, gateway reachability, and the skills
+lint. Run it first on any machine that misbehaves, and on any Mac or Linux box
+before trusting the setup.
+
+| | Credential store | Browser | Status |
+|---|---|---|---|
+| Windows | DPAPI, encrypted to your Windows account | `cmd /c start` | verified |
+| macOS | Keychain via `security` | `open` | written, not yet run on a Mac |
+| Linux | libsecret via `secret-tool` | `xdg-open` | written, not yet run |
+
+Where a credential store is unavailable, everything falls back to a `0600` file
+under `~/.config/gravitas-skills/`, so nothing is blocked, only downgraded.
+
+Two known platform wrinkles. On macOS, `security` takes the password as a
+command-line argument and has no stdin form, so the key is briefly visible to
+anything that can list your processes; the Keychain is still a better resting
+place than a file, so that trade is taken deliberately. On Linux, `secret-tool`
+needs an unlocked keyring, which a headless session usually does not have, and
+falls back to the file.
+
 ## Staying up to date
 
 `main` is the release channel. `plugin.json` declares no `version`, so the

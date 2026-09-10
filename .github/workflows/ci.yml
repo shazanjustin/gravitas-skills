@@ -8,7 +8,11 @@ on:
 jobs:
   lint:
     name: Lint skills and manifests
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
 
@@ -21,6 +25,12 @@ jobs:
       # description is billed on every turn of every session.
       - name: Lint skills
         run: node scripts/lint-skills.mjs
+
+      # The credential store, browser opener and update check each take a
+      # different path per OS. Run the self-test on all three so a Mac or Linux
+      # regression surfaces here rather than on a teammate's laptop.
+      - name: Doctor
+        run: node scripts/doctor.mjs
 
       - name: Check scripts parse
         run: |
