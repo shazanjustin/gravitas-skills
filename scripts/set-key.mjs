@@ -22,9 +22,12 @@
 import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
 import { promptViaBrowser } from "./key-web.mjs";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 const SERVICE = "gravitas-gateway-key";
 const ACCOUNT = "gravitas";
@@ -141,8 +144,29 @@ function finish(where) {
   console.log("Skills read it back automatically. To check:  node scripts/get-key.mjs --check");
 }
 
+// Is there already a key? A working key is easy to destroy and cannot be
+// recovered from here, so a non-interactive run must not quietly replace one.
+// This guard exists because a scripted --stdin run overwrote a live key during
+// testing, and the value was gone before anyone noticed.
+function existingKey() {
+  const r = spawnSync(process.execPath, [join(HERE, "get-key.mjs"), "--check"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+    timeout: 5000,
+    windowsHide: true,
+  });
+  return !r.error && r.status === 0;
+}
+
+const force = process.argv.includes("--force");
+
 // Piped input wins: it is explicit, and it is how CI and scripts drive this.
 if (process.argv.includes("--stdin")) {
+  if (existingKey() && !force) {
+    console.error("A gateway key is already stored. Refusing to replace it silently.");
+    console.error("Pass --force if you really mean to overwrite it.");
+    process.exit(1);
+  }
   const key = await readStdin();
   if (!key) {
     console.error("No key given. Nothing stored.");

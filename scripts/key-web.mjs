@@ -27,6 +27,70 @@ import { platform } from "node:os";
 
 const TIMEOUT_MS = 5 * 60 * 1000;
 
+// Design tokens lifted from gravitas.my, so this page reads as part of the
+// company's own surface rather than a stray localhost form. Taken from the
+// site's stylesheet rather than eyeballed:
+//   --primary #ff1503  --secondary #fe6a16  --accent #ffbb14
+//   --background #fff6ec  --gray #c4bcb4  --black #434343
+//   Manrope for display, Noto Sans for body.
+// Committed to the light palette on purpose: the brand is a warm cream, and a
+// dark variant would be an invention rather than a match. Every colour is set
+// explicitly so the page never borrows the browser's theme.
+const FONTS =
+  '<link rel="preconnect" href="https://fonts.googleapis.com">' +
+  '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
+  '<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800' +
+  '&family=Noto+Sans:wght@400;600&display=swap" rel="stylesheet">';
+
+const CSS = `
+  :root{--primary:#ff1503;--secondary:#fe6a16;--accent:#ffbb14;
+        --background:#fff6ec;--gray:#c4bcb4;--black:#434343;--white:#fff;
+        --display:"Manrope",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+        --body:"Noto Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;
+       padding:24px;background:var(--background);color:var(--black);
+       font:400 15px/1.6 var(--body);-webkit-font-smoothing:antialiased}
+  .card{width:100%;max-width:460px;background:var(--white);
+        border:1px solid color-mix(in srgb,var(--gray) 55%,transparent);
+        border-radius:16px;padding:34px 32px;
+        box-shadow:0 1px 2px rgba(67,67,67,.04),0 12px 32px -12px rgba(67,67,67,.10)}
+  .rule{height:3px;border-radius:3px;margin-bottom:24px;
+        background:linear-gradient(90deg,var(--primary),var(--secondary) 55%,var(--accent))}
+  .eyebrow{font:800 11px/1 var(--display);letter-spacing:.16em;text-transform:uppercase;
+           color:var(--primary);margin:0 0 12px}
+  h1{font:800 25px/1.15 var(--display);letter-spacing:-.02em;margin:0 0 8px}
+  .sub{color:color-mix(in srgb,var(--black) 62%,var(--white));font-size:14px;margin:0 0 24px}
+  label{display:block;font:600 13px/1 var(--display);letter-spacing:.01em;margin-bottom:8px}
+  input{width:100%;padding:13px 14px;font:400 15px/1.2 var(--body);
+        color:var(--black);background:var(--background);
+        border:1px solid color-mix(in srgb,var(--gray) 70%,transparent);
+        border-radius:10px;transition:border-color .15s,box-shadow .15s}
+  input::placeholder{color:color-mix(in srgb,var(--gray) 90%,var(--black))}
+  input:focus{outline:0;border-color:var(--secondary);background:var(--white);
+              box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 40%,transparent)}
+  button{width:100%;margin-top:16px;padding:13px;border:0;border-radius:10px;
+         font:700 15px/1 var(--display);letter-spacing:.01em;color:var(--white);
+         background:linear-gradient(90deg,var(--primary),var(--secondary));
+         cursor:pointer;transition:filter .15s,transform .06s}
+  button:hover{filter:brightness(1.06)}
+  button:active{transform:translateY(1px)}
+  button[disabled]{opacity:.65;cursor:progress;filter:none}
+  .err{font:600 13px/1.5 var(--body);color:var(--primary);margin:0 0 20px;
+       padding:11px 13px;border-radius:10px;
+       background:color-mix(in srgb,var(--primary) 8%,var(--white));
+       border:1px solid color-mix(in srgb,var(--primary) 22%,transparent)}
+  .hint{font-size:13.5px;color:color-mix(in srgb,var(--black) 66%,var(--white));margin:0 0 22px}
+  .note{font-size:12.5px;line-height:1.65;margin:22px 0 0;padding-top:18px;
+        color:color-mix(in srgb,var(--black) 55%,var(--white));
+        border-top:1px solid color-mix(in srgb,var(--gray) 45%,transparent)}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;
+       padding:1px 5px;border-radius:5px;
+       background:color-mix(in srgb,var(--gray) 24%,var(--background));color:var(--black)}
+  .ok{color:#2f6b46}
+  @media (max-width:460px){.card{padding:28px 20px}h1{font-size:22px}}
+`;
+
 function page({ nonce, error, gateway }) {
   const banner = error
     ? `<p class="err">${error}</p>`
@@ -37,57 +101,30 @@ function page({ nonce, error, gateway }) {
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Gravitas Gateway key</title>
-<style>
-  :root { color-scheme: light dark; --bg:#fbfaf9; --fg:#1a1a18; --mut:#6b6a66;
-          --line:#e0ddd8; --acc:#b4552d; --err:#a8322a; --ok:#2f6b46; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#17171a; --fg:#eceae6; --mut:#9a978f; --line:#2e2e33;
-            --acc:#d9764a; --err:#e0736a; --ok:#5fbe89; }
-  }
-  * { box-sizing: border-box; }
-  body { margin:0; min-height:100vh; display:grid; place-items:center;
-         background:var(--bg); color:var(--fg); padding:24px;
-         font:15px/1.55 ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif; }
-  .card { width:100%; max-width:440px; }
-  h1 { font-size:19px; margin:0 0 4px; letter-spacing:-0.01em; }
-  .sub { color:var(--mut); font-size:13px; margin:0 0 22px; }
-  label { display:block; font-size:13px; font-weight:600; margin-bottom:7px; }
-  input { width:100%; padding:11px 12px; font-size:15px; font-family:inherit;
-          border:1px solid var(--line); border-radius:8px; background:var(--bg);
-          color:var(--fg); }
-  input:focus { outline:2px solid var(--acc); outline-offset:-1px; border-color:transparent; }
-  button { width:100%; margin-top:14px; padding:11px; font-size:15px; font-weight:600;
-           font-family:inherit; border:0; border-radius:8px; background:var(--acc);
-           color:#fff; cursor:pointer; }
-  button:hover { filter:brightness(1.07); }
-  button[disabled] { opacity:.6; cursor:progress; }
-  .hint, .err, .note { font-size:13px; }
-  .hint { color:var(--mut); margin:0 0 18px; }
-  .err { color:var(--err); margin:0 0 18px; font-weight:600; }
-  .note { color:var(--mut); margin-top:18px; padding-top:16px;
-          border-top:1px solid var(--line); }
-  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; }
-</style></head>
-<body><div class="card">
-  <h1>Gravitas Gateway key</h1>
-  <p class="sub">Setting up the Gravitas skills on this machine</p>
+${FONTS}
+<style>${CSS}</style></head>
+<body><main class="card">
+  <div class="rule"></div>
+  <p class="eyebrow">Gravitas Skills</p>
+  <h1>Connect the gateway</h1>
+  <p class="sub">One key, then every Gravitas skill works on this machine.</p>
   ${banner}
   <form method="POST" action="/${nonce}" autocomplete="off">
-    <label for="k">Paste your key</label>
+    <label for="k">Gateway key</label>
     <input id="k" name="key" type="password" autocomplete="off" autofocus
            spellcheck="false" placeholder="Paste, then press Enter">
     <button type="submit">Verify and save</button>
   </form>
-  <p class="note">This page is served from your own machine on
-    <code>127.0.0.1</code> and closes as soon as the key is saved. The key is
-    checked against <code>${gateway}</code>, then stored in your operating
-    system's credential store. It is never sent to an AI model and never
-    appears in a chat transcript.</p>
-</div>
+  <p class="note">Served from your own machine on <code>127.0.0.1</code>, and it
+    closes as soon as the key is saved. The key is checked against
+    <code>${gateway}</code>, then stored in your operating system's credential
+    store. It is never sent to an AI model and never appears in a chat
+    transcript.</p>
+</main>
 <script>
   document.querySelector("form").addEventListener("submit", (e) => {
     const b = e.target.querySelector("button");
-    b.disabled = true; b.textContent = "Checking with the gateway...";
+    b.disabled = true; b.textContent = "Checking with the gateway\u2026";
   });
 </script>
 </body></html>`;
@@ -98,24 +135,18 @@ function donePage(where) {
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Key saved</title>
-<style>
-  :root { color-scheme: light dark; --bg:#fbfaf9; --fg:#1a1a18; --mut:#6b6a66; --ok:#2f6b46; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#17171a; --fg:#eceae6; --mut:#9a978f; --ok:#5fbe89; }
-  }
-  body { margin:0; min-height:100vh; display:grid; place-items:center; padding:24px;
-         background:var(--bg); color:var(--fg);
-         font:15px/1.55 ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif; }
-  .card { max-width:420px; text-align:center; }
-  h1 { font-size:19px; margin:0 0 8px; color:var(--ok); }
-  p { color:var(--mut); font-size:13px; margin:0 0 6px; }
-  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; }
-</style></head>
-<body><div class="card">
-  <h1>Key saved</h1>
-  <p>Stored in ${where}.</p>
-  <p>You can close this tab and go back to your agent.</p>
-</div></body></html>`;
+${FONTS}
+<style>${CSS}</style></head>
+<body><main class="card">
+  <div class="rule"></div>
+  <p class="eyebrow">Gravitas Skills</p>
+  <h1 class="ok">Key saved</h1>
+  <p class="sub">Stored in ${where}.</p>
+  <p class="hint">You can close this tab and go back to your agent. Restart it
+    once so the skills pick the key up.</p>
+  <p class="note">The key never passed through an AI model and is not in any
+    chat transcript.</p>
+</main></body></html>`;
 }
 
 function openBrowser(url) {
