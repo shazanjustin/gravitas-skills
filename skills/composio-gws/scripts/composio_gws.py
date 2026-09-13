@@ -303,6 +303,53 @@ class Composio:
         return self.execute("GOOGLEDRIVE_ADD_PARENT",
                             {"file_id": file_id, "parent_id": folder_id})
 
+    # ---------- raw Google APIs through Composio's proxy ----------
+    def connected_account(self, toolkit):
+        """The ACTIVE connected account id for a toolkit slug, e.g. "googledrive"."""
+        cache = self.__dict__.setdefault("_accounts", {})
+        if toolkit not in cache:
+            conn = http.client.HTTPSConnection(HOST, timeout=self.timeout, context=ssl.create_default_context())
+            conn.request("GET", "/api/v3/connected_accounts?user_ids=%s&limit=100" % self.user,
+                         headers={"x-api-key": self.key, "Accept": "application/json"})
+            items = json.loads(conn.getresponse().read().decode("utf-8", "replace")).get("items", [])
+            for a in items:
+                if a.get("status") == "ACTIVE":
+                    cache.setdefault(a.get("toolkit", {}).get("slug"), a.get("id"))
+        if not cache.get(toolkit):
+            raise RuntimeError("no ACTIVE %s connected account for this user" % toolkit)
+        return cache[toolkit]
+
+    def proxy(self, method, url, body=None, toolkit="googledrive"):
+        """Call a Google API endpoint directly with the connected account's auth.
+
+        For anything a Composio tool does not expose, such as supportsAllDrives."""
+        conn = http.client.HTTPSConnection(HOST, timeout=self.timeout, context=ssl.create_default_context())
+        payload = {"endpoint": url, "method": method, "connected_account_id": self.connected_account(toolkit)}
+        if body is not None:
+            payload["body"] = body
+        conn.request("POST", "/api/v3/tools/execute/proxy", body=json.dumps(payload),
+                     headers={"x-api-key": self.key, "Content-Type": "application/json"})
+        resp = conn.getresponse(); raw = resp.read().decode("utf-8", "replace")
+        j = json.loads(raw)
+        status = j.get("status", resp.status)
+        if resp.status >= 400 or (isinstance(status, int) and status >= 400):
+            raise RuntimeError("proxy %s %s -> %s: %s" % (method, url, status, raw[:400]))
+        return j.get("data", j)
+
+    def drive_copy(self, file_id, title):
+        """Copy a file, including one on a shared drive. The copy lands in the source's folder.
+
+        GOOGLEDRIVE_COPY_FILE answers 404 "File not found" for shared-drive files,
+        because it cannot send supportsAllDrives=true."""
+        return self.proxy("POST", "https://www.googleapis.com/drive/v3/files/%s/copy?supportsAllDrives=true&fields=id,name,parents,driveId" % file_id,
+                          {"name": title})
+
+    def drive_trash(self, file_id):
+        """Move a file to Trash, which can be undone. Prefer this to
+        GOOGLEDRIVE_GOOGLE_DRIVE_DELETE_FOLDER_OR_FILE_ACTION, which deletes permanently."""
+        return self.proxy("PATCH", "https://www.googleapis.com/drive/v3/files/%s?supportsAllDrives=true&fields=id,name,trashed" % file_id,
+                          {"trashed": True})
+
 
 if __name__ == "__main__":
     import sys

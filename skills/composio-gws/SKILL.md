@@ -9,7 +9,9 @@ description: >
 
 # Composio: fast Google Workspace access
 
-Two scripts. `composio_gws.py` is the transport, `deck_lib.py` builds Slides.
+Three scripts. `composio_gws.py` is the transport, `deck_lib.py` builds quick
+Slides decks, and `slides_kit.py` keeps dense decks (tables, stats, lots of text)
+from overlapping.
 
 ## Setup
 
@@ -71,6 +73,16 @@ c = C.Composio()
   ids you captured from files you created in this session. A `name contains`
   sweep will match the user's files too.
 - **Slides object ids must be 5+ characters.** `s001` is rejected; use `shp001`.
+- **Font weight 700+ only renders when `bold` is true.** Weight 700 or 800 with
+  `bold: false` renders regular; weight 600 with `bold: false` is fine. Derive
+  `bold = weight >= 700`.
+- **`GOOGLESLIDES_PRESENTATIONS_CREATE` has no page size**, so API-made decks are
+  10 x 5.625in. For another size, copy an existing native deck of that size and
+  clear its slides. Its `duplicatePresentationId` field is rejected by Google.
+- **`GOOGLESLIDES_PRESENTATIONS_GET` returns HTTP 413** on large image-heavy decks.
+- **Shared-drive files:** `GOOGLEDRIVE_COPY_FILE` answers 404 "File not found"
+  even though Slides can read the deck, because it cannot pass
+  `supportsAllDrives`. Use `c.drive_copy()`, which goes through Composio's proxy.
 - **There is NO `GOOGLESHEETS_VALUES_UPDATE` on this project.** Verified against
   the live tool list (`GET /api/v3/tools?toolkit_slug=googlesheets`) on
   2026-09-02: the only writer is **`GOOGLESHEETS_BATCH_UPDATE`**, which takes
@@ -150,11 +162,75 @@ for sid, r in zip(ids, c.parallel(jobs)):
     urllib.request.urlretrieve(r["contentUrl"], "slide_%s.png" % sid)
 ```
 
+## Slides that do not overlap
+
+Verified 2026-09-13 by rendering every slide of a 36-slide report. The first
+build looked finished and was not: tables ran into text, labels sat on rules,
+images hid chips. Each rule below fixed a real defect. `slides_kit.py` encodes them.
+
+1. **Never trust a table created through the API for layout.** Its cell padding
+   cannot be changed, so rows render about 0.33in tall however small the text,
+   and the table pushes into whatever is placed below it. Instead, duplicate a
+   compact table the deck already has (`find_compact_table()`; tables imported
+   from PowerPoint are tight), then reshape it. Rows and columns inserted into it
+   keep the tight padding, so `minRowHeight` holds exactly and a table's height is
+   rows x row height. Duplicate the template's whole slide (`duplicateObject`),
+   delete everything else on the copy, and delete the template slide once at the
+   end, not on every run.
+2. **Column widths under 32pt (0.444in) are rejected.** Two narrow tables side by
+   side usually break this; use one full-width table per slide and put context in
+   a side column.
+3. **Never fake a table with columns of text boxes.** It looks aligned until one
+   cell wraps, and it cannot be edited as a table.
+4. **Send in layers:** slides and table reshapes, backgrounds, images, then text,
+   chips and table fills. Later objects stack on top, so images sent last cover
+   the chips and labels on them.
+5. **Measure, then place.** Put each block below the estimated height of the one
+   above (`text_height()`, `Layers.flow()`), not at a guessed constant. Text
+   boxes do not autofit and have a fixed 0.05in inset top and bottom that
+   positions must allow for.
+6. **Keep a value and its label in one text box** (`Layers.stat_block()`). In
+   two boxes, a 14pt value overflows upward onto its rule and the label floats
+   above the next value, so the reader pairs the wrong label and number.
+7. **Short labels in narrow columns.** "Contest: 4 contents" in a 0.55in Date
+   column wraps to four lines and makes the whole row tall. Put "Total" there
+   and the count in the wide column.
+8. **Pin template slides by object id, never by text search.** Searching for a
+   slide title also matches the agenda slide that lists it.
+9. **Look at every slide.** `contact_sheet()` renders them into one image. Check
+   for overlap, clipped text and stray elements before calling a deck done.
+
+```python
+from composio_gws import Composio
+from slides_kit import Layers, CompactTables, find_compact_table, contact_sheet
+
+c = Composio(); deck = c.deck_get(pid)
+L = Layers(prefix="rpt")
+tables = CompactTables(L, deck, find_compact_table(deck))
+
+t = tables.slide_with_table("rpt_s01", nrows=6, widths=[1.6, 1.0, 1.4, 1.4],
+                            x=0.45, y=1.4, row_h=0.26, header_h=0.24, total_h=0.24)
+tables.fill(t, [("header", ["Platform", "Posts", "Reach", "ER"]),
+                ("body", ["Instagram", "40", "120,000", "1.20%"]),
+                ("total", ["All", "60", "150,000", "1.00%"])],
+            aligns=["START", "END", "END", "END"])
+y = 1.4 + t["height"] + 0.2                 # the next block starts below the real table
+y = L.stat_block("rpt_s01", 0.45, y, 4.9, "Delivered", [("150,000", "Reach"), ("1.00%", "ER")])
+failed_images = L.send(c, pid)
+contact_sheet(c, pid, ["rpt_s01"], "check.png")
+```
+
+**Rebuild in place** (a shared link stays valid): delete slides you created
+(give them a common id prefix), keep template slides until the final run, and
+if the deck would become empty mid-build, create a temporary slide first.
+
 ## Drive
 
 ```python
 c.drive_find("Tiger Brokers")               # name contains, not trashed
 c.drive_move(file_id, folder_id)
+c.drive_copy(file_id, "New title")         # works on shared drives, lands next to the source
+c.drive_trash(file_id)                      # recoverable, unlike the permanent delete tool
 ```
 
 New presentations land in My Drive root; move them if a folder is wanted.
