@@ -18,7 +18,7 @@ INSTA_RE = re.compile(
     r"(?:https?://)?(?:www\.)?instagram\.com/(?:p|reel)/([a-zA-Z0-9_-]+)"
 )
 TIKTOK_RE = re.compile(
-    r"(?:https?://)?(?:www\.)?tiktok\.com/@[\w.]+/video/(\d+)"
+    r"(?:https?://)?(?:www\.)?tiktok\.com/@[\w.]*?/video/(\d+)"
 )
 
 
@@ -41,6 +41,14 @@ def tiktok_thumbnail(video_id: str) -> str | None:
         return data.get("thumbnail_url")
     except Exception:
         return None
+
+
+def resolve_url(url: str) -> str:
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    try:
+        return urllib.request.urlopen(req, context=ssl_ctx, timeout=15).url
+    except Exception:
+        return url
 
 
 def extract_urls(args: list[str]) -> list[str]:
@@ -82,7 +90,8 @@ def main():
             thumb = instagram_thumbnail(m.group(1))
             results.append((url, thumb or "FAILED"))
             continue
-        m = TIKTOK_RE.search(url)
+        target = resolve_url(url) if "vt.tiktok.com" in url else url
+        m = TIKTOK_RE.search(target)
         if m:
             thumb = tiktok_thumbnail(m.group(1))
             results.append((url, thumb or "FAILED"))
