@@ -59,6 +59,22 @@ TT_COLS = [
     ('Views',              10),    # Video views
 ]
 
+TT_COLS_PLATFORM = [
+    ('Campaign name',       0),
+    ('Placement',           2),    # Objective; col 1 is platform label
+    ('Amount spent\n(MYR)', 3),
+    ('Impressions',         4),
+    ('Reach',               5),
+    ('Frequency',           6),
+    ('Post\ncomments',      8),    # Paid comments
+    ('Post\nshares',        9),    # Paid shares
+    ('Post\nreactions',     7),    # Paid likes
+    ('Post\nengagements', None),
+    ('Post\nsaves',       None),
+    ('Clicks\n(all)',      10),
+    ('Views',              11),    # Video views
+]
+
 YT_COLS = [
     ('Campaign',            0),
     ('Objective',           1),    # Campaign type
@@ -207,11 +223,30 @@ def parse_excel(excel_path, sheet_name):
     df = pd.read_excel(excel_path, sheet_name=sheet_name, header=None)
     blocks = []
     month, i, n = None, 0, len(df)
+    monthly_seen = False
+
+    def is_stop(v0, v1):
+        return (
+            (not v0 and not v1)
+            or v0 in STOP_WORDS
+            or v0.startswith('Link:')
+            or v0.startswith('*')
+            or v0.startswith('http')
+        )
 
     while i < n:
         row = df.iloc[i]
         v0 = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ''
         v1 = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else ''
+        v2 = str(row.iloc[2]).strip() if pd.notna(row.iloc[2]) else ''
+
+        if v0.upper().startswith('BY MONTHLY'):
+            monthly_seen = True
+            i += 1
+            continue
+        if not monthly_seen:
+            i += 1
+            continue
 
         if v0.upper() in {'JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE',
                           'JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'}:
@@ -220,40 +255,43 @@ def parse_excel(excel_path, sheet_name):
             continue
 
         if v0 in ('Campaign name', 'Campaign') and \
-                v1 in ('Placement', 'Advertising objective', 'Campaign type'):
+                v1 in ('Placement', 'Advertising objective', 'Campaign type', 'Platform'):
             if v1 == 'Placement':
                 platform, cols = 'instagram', IG_COLS
             elif v1 == 'Advertising objective':
                 platform, cols = 'tiktok', TT_COLS
+            elif v1 == 'Platform' and v2 == 'Objective':
+                platform, cols = 'tiktok', TT_COLS_PLATFORM
             else:
                 platform, cols = 'youtube', YT_COLS
 
             j = i + 1
             if platform == 'instagram':
                 data_rows, cname = [], None
+
+                def flush():
+                    if data_rows and cname:
+                        blocks.append({'month': month, 'platform': platform,
+                                       'campaign_name': cname, 'data_rows': list(data_rows), 'cols': cols})
+
                 while j < n:
                     dr = df.iloc[j]
                     dv0 = str(dr.iloc[0]).strip() if pd.notna(dr.iloc[0]) else ''
                     dv1 = str(dr.iloc[1]).strip() if pd.notna(dr.iloc[1]) else ''
-                    if not dv0 and not dv1:
-                        break
-                    if dv0 in STOP_WORDS or dv0.startswith('Link:') or dv0.startswith('*'):
+                    if is_stop(dv0, dv1):
                         break
                     if dv0:
-                        cname = dv0
+                        flush()
+                        data_rows, cname = [], dv0
                     data_rows.append(dr)
                     j += 1
-                if data_rows and cname:
-                    blocks.append({'month': month, 'platform': platform,
-                                   'campaign_name': cname, 'data_rows': data_rows, 'cols': cols})
+                flush()
             else:
                 while j < n:
                     dr = df.iloc[j]
                     dv0 = str(dr.iloc[0]).strip() if pd.notna(dr.iloc[0]) else ''
                     dv1 = str(dr.iloc[1]).strip() if pd.notna(dr.iloc[1]) else ''
-                    if not dv0 and not dv1:
-                        break
-                    if dv0 in STOP_WORDS or dv0.startswith('Link:') or dv0.startswith('*'):
+                    if is_stop(dv0, dv1):
                         break
                     if dv0:
                         blocks.append({'month': month, 'platform': platform,
@@ -307,13 +345,14 @@ def gen_insights(block):
 
     elif platform == 'tiktok':
         r = rows[0]
+        spend_i, impr_i, reach_i, freq_i, clicks_i, views_i = (3, 4, 5, 6, 10, 11) if block['cols'] is TT_COLS_PLATFORM else (2, 3, 4, 5, 9, 10)
         bullets.append(
-            f'With a spend of RM{safe(r,2):,.2f}, the TikTok post delivered '
-            f'{fk(safe(r,3))} impressions and {fk(safe(r,10))} video views.'
+            f'With a spend of RM{safe(r,spend_i):,.2f}, the TikTok post delivered '
+            f'{fk(safe(r,impr_i))} impressions and {fk(safe(r,views_i))} video views.'
         )
-        bullets.append(f'Reached {fk(safe(r,4))} unique users with a frequency of {safe(r,5):.2f}.')
-        if safe(r,9):
-            bullets.append(f'Generated {fk(safe(r,9))} total clicks across the campaign period.')
+        bullets.append(f'Reached {fk(safe(r,reach_i))} unique users with a frequency of {safe(r,freq_i):.2f}.')
+        if safe(r,clicks_i):
+            bullets.append(f'Generated {fk(safe(r,clicks_i))} total clicks across the campaign period.')
 
     elif platform == 'youtube':
         r = rows[0]
