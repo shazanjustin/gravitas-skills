@@ -30,7 +30,7 @@ from datetime import datetime, date
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ig_utils import get_supabase, list_account_profiles, DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_KEY, resolve_output_path
+from ig_utils import get_supabase, list_account_profiles, DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_KEY, DEFAULT_SUPABASE_PUBLISHABLE_KEY, resolve_output_path
 
 ACTIVITY_GROUPS = [
     'NPD',
@@ -581,7 +581,7 @@ def generate_html(all_posts_by_competitor, brand, from_date, to_date, image_dir)
 
 <script>
 const SUPABASE_URL = '{DEFAULT_SUPABASE_URL}';
-const SUPABASE_KEY = '{DEFAULT_SUPABASE_KEY}';
+const SUPABASE_KEY = '{DEFAULT_SUPABASE_PUBLISHABLE_KEY}';
 
 // All competitor data
 const ALL_DATA = {all_competitor_data_json};

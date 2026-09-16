@@ -28,7 +28,7 @@ from datetime import datetime, date
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ig_utils import get_supabase, DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_KEY, resolve_output_path
+from ig_utils import get_supabase, DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_KEY, DEFAULT_SUPABASE_PUBLISHABLE_KEY, resolve_output_path
 
 ACTIVITY_GROUPS = [
     'NPD',
@@ -238,7 +238,7 @@ def generate_html(posts, brand, from_date, to_date, image_dir):
 
 <script>
 const SUPABASE_URL = '{DEFAULT_SUPABASE_URL}';
-const SUPABASE_KEY = '{DEFAULT_SUPABASE_KEY}';
+const SUPABASE_KEY = '{DEFAULT_SUPABASE_PUBLISHABLE_KEY}';
 
 // Track changes
 const changes = new Map();

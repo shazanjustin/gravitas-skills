@@ -3,9 +3,12 @@ Shared utilities for Intel IG Manager — Supabase connection, profile listing,
 competitor resolution, and session management.
 
 Credentials are read from:
-  1. Environment variables (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+  1. Environment variables (SUPABASE_URL, SUPABASE_SECRET_KEY / SUPABASE_SERVICE_ROLE_KEY)
   2. .env file in the skill root directory
-  3. Hardcoded defaults (fallback)
+  3. The Gravitas gateway (SOCIAL_ATLAS_SUPABASE_SECRET_KEY)
+
+Never hardcode a key here. A service key committed to this repo is a public key:
+one was, from 2026-06-23 until 2026-09-16, and had to be rotated.
 """
 import os
 import sys
@@ -32,13 +35,55 @@ if _dotenv.exists():
 
 # ── Default credentials (read from env, then .env, then hardcoded fallback) ──
 DEFAULT_SUPABASE_URL = os.environ.get('SUPABASE_URL') or 'https://kzobygrjohvbuxiljbgk.supabase.co'
-DEFAULT_SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY') or 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt6b2J5Z3Jqb2h2YnV4aWxqYmdrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODI0Njk0MSwiZXhwIjoyMDgzODIyOTQxfQ.JgkVfMVnAydX4WKwbSO1l-bGKfEDAOpjDA2tFv6ZxBA'
+def _gateway_secret(name):
+    """Fetch one secret from the Gravitas gateway (see the gravitas-gateway skill).
+
+    Cloudflare rejects Python's default urllib User-Agent with error 1010, so a
+    curl-like User-Agent is required, not optional.
+    """
+    key = os.environ.get('GRAVITAS_GATEWAY_KEY')
+    if not key:
+        return ''
+    base = (os.environ.get('GRAVITAS_GATEWAY_URL') or 'https://gateway.shazan.me').rstrip('/')
+    try:
+        response = requests.get(
+            f'{base}/secret/{name}',
+            headers={'x-api-key': key, 'User-Agent': 'curl/8.4.0'},
+            timeout=15,
+        )
+        response.raise_for_status()
+        return response.json().get('value', '')
+    except Exception:
+        return ''
+
+
+# The write key. Env first, then the gateway. There is deliberately no fallback:
+# a missing key must fail loudly rather than fall back to something committed.
+DEFAULT_SUPABASE_KEY = (
+    os.environ.get('SUPABASE_SECRET_KEY')
+    or os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
+    or _gateway_secret('SOCIAL_ATLAS_SUPABASE_SECRET_KEY')
+)
+
+# The browser-safe key, for HTML review files that query Supabase from the page.
+# Row-level security applies to it, so it may travel inside a generated report;
+# the secret key never may.
+DEFAULT_SUPABASE_PUBLISHABLE_KEY = (
+    os.environ.get('SUPABASE_PUBLISHABLE_KEY')
+    or os.environ.get('VITE_SUPABASE_ANON_KEY')
+    or _gateway_secret('SOCIAL_ATLAS_SUPABASE_ANON_KEY')
+)
 DEFAULT_SESSION_FILE = os.environ.get('INSTALOADER_SESSION') or 'C:/Users/dell/AppData/Local/Instaloader/session-_notakaki'
 DEFAULT_OUTPUT_DIR = os.environ.get('IG_MANAGER_OUTPUT_DIR') or str(SKILL_DIR)
 
 
 def get_supabase(url=None, key=None):
-    """Create a Supabase client (uses service_role key for RLS bypass)."""
+    """Create a Supabase client (uses the secret key, which bypasses RLS)."""
+    if not (key or DEFAULT_SUPABASE_KEY):
+        raise SystemExit(
+            'No Supabase key. Set SUPABASE_SECRET_KEY, or set GRAVITAS_GATEWAY_KEY '
+            'so it can be fetched from the gateway.'
+        )
     return create_client(
         url or DEFAULT_SUPABASE_URL,
         key or DEFAULT_SUPABASE_KEY,
