@@ -28,6 +28,5 @@
       "default": "https://gateway.shazan.me",
       "required": false
     }
-  },
-  "hooks": "./hooks/hooks.json"
+  }
 }
