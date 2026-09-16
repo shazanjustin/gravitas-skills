@@ -48,6 +48,9 @@ GATEWAY_SECRETS = (
     "SOCIAL_ATLAS_AUTH_EMAIL",
     "SOCIAL_ATLAS_AUTH_PASSWORD",
     "SOCIAL_ATLAS_SUPABASE_URL",
+    "SOCIAL_ATLAS_SUPABASE_PUBLISHABLE_KEY",
+    # Older name for the same thing; it holds the publishable key since the
+    # 2026-09-16 key rotation. Kept so an un-updated gateway still works.
     "SOCIAL_ATLAS_SUPABASE_ANON_KEY",
 )
 
@@ -111,8 +114,9 @@ def load_env():
     # The gateway namespaces its keys; the rest of this script uses the repo's names.
     if gateway.get("SOCIAL_ATLAS_SUPABASE_URL"):
         values["VITE_SUPABASE_URL"] = gateway["SOCIAL_ATLAS_SUPABASE_URL"]
-    if gateway.get("SOCIAL_ATLAS_SUPABASE_ANON_KEY"):
-        values["VITE_SUPABASE_ANON_KEY"] = gateway["SOCIAL_ATLAS_SUPABASE_ANON_KEY"]
+    publishable = gateway.get("SOCIAL_ATLAS_SUPABASE_PUBLISHABLE_KEY") or gateway.get("SOCIAL_ATLAS_SUPABASE_ANON_KEY")
+    if publishable:
+        values["VITE_SUPABASE_ANON_KEY"] = publishable
     for path in (REPO_ENV, SKILL_ENV):
         if path.exists():
             values.update(_parse_env_text(path.read_text(encoding="utf-8", errors="ignore")))

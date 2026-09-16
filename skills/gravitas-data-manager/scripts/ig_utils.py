@@ -35,19 +35,17 @@ if _dotenv.exists():
 
 # ── Default credentials (read from env, then .env, then hardcoded fallback) ──
 DEFAULT_SUPABASE_URL = os.environ.get('SUPABASE_URL') or 'https://kzobygrjohvbuxiljbgk.supabase.co'
-def _gateway_secret(name):
-    """Fetch one secret from the Gravitas gateway (see the gravitas-gateway skill).
+def _fetch_secret(name, base, key):
+    """Fetch one secret from a gateway.
 
     Cloudflare rejects Python's default urllib User-Agent with error 1010, so a
     curl-like User-Agent is required, not optional.
     """
-    key = os.environ.get('GRAVITAS_GATEWAY_KEY')
     if not key:
         return ''
-    base = (os.environ.get('GRAVITAS_GATEWAY_URL') or 'https://gateway.shazan.me').rstrip('/')
     try:
         response = requests.get(
-            f'{base}/secret/{name}',
+            f'{base.rstrip("/")}/secret/{name}',
             headers={'x-api-key': key, 'User-Agent': 'curl/8.4.0'},
             timeout=15,
         )
@@ -57,12 +55,35 @@ def _gateway_secret(name):
         return ''
 
 
+def _gateway_secret(name):
+    """Read a shared credential from the Gravitas gateway."""
+    return _fetch_secret(
+        name,
+        os.environ.get('GRAVITAS_GATEWAY_URL') or 'https://gateway.shazan.me',
+        os.environ.get('GRAVITAS_GATEWAY_KEY'),
+    )
+
+
+def _personal_secret(name):
+    """Read a credential from Shazan's personal gateway.
+
+    The Supabase secret key bypasses row-level security, so it lives here rather
+    than on the team gateway. Anyone else should set SUPABASE_SECRET_KEY in the
+    environment, or use the admin account the way social-atlas-ingest does.
+    """
+    return _fetch_secret(
+        name,
+        os.environ.get('SHAZAN_GATEWAY_URL') or 'https://keys.shazan.me',
+        os.environ.get('SHAZAN_GATEWAY_KEY'),
+    )
+
+
 # The write key. Env first, then the gateway. There is deliberately no fallback:
 # a missing key must fail loudly rather than fall back to something committed.
 DEFAULT_SUPABASE_KEY = (
     os.environ.get('SUPABASE_SECRET_KEY')
     or os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
-    or _gateway_secret('SOCIAL_ATLAS_SUPABASE_SECRET_KEY')
+    or _personal_secret('SOCIAL_ATLAS_SUPABASE_SECRET_KEY')
 )
 
 # The browser-safe key, for HTML review files that query Supabase from the page.
@@ -71,6 +92,8 @@ DEFAULT_SUPABASE_KEY = (
 DEFAULT_SUPABASE_PUBLISHABLE_KEY = (
     os.environ.get('SUPABASE_PUBLISHABLE_KEY')
     or os.environ.get('VITE_SUPABASE_ANON_KEY')
+    or _gateway_secret('SOCIAL_ATLAS_SUPABASE_PUBLISHABLE_KEY')
+    # Older gateway name. It holds the publishable key since the 2026-09-16 rotation.
     or _gateway_secret('SOCIAL_ATLAS_SUPABASE_ANON_KEY')
 )
 DEFAULT_SESSION_FILE = os.environ.get('INSTALOADER_SESSION') or 'C:/Users/dell/AppData/Local/Instaloader/session-_notakaki'
