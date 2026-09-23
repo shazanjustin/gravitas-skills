@@ -202,8 +202,8 @@ The agent uses this table to know which secret to fetch when a skill loads:
 | `metricool-engagement-rate-xlsx` | `METRICOOL_TOKEN` | `GET /secret/METRICOOL_TOKEN` |
 | `metricool-engagement-rate-xlsx-v2` | `METRICOOL_TOKEN` | `GET /secret/METRICOOL_TOKEN` |
 | `performance-social-report-slides` | `METRICOOL_TOKEN` | `GET /secret/METRICOOL_TOKEN` |
-| `gravitas-data-manager` | `APIFY_API_KEY` + `METRICOOL_TOKEN`; Meta account discovery | `GET /secret/APIFY_API_KEY` + `GET /secret/METRICOOL_TOKEN` + `GET /pages` |
-| `pitch-competitor-research` | `APIFY_API_KEY` + `METRICOOL_TOKEN` | `GET /secret/APIFY_API_KEY` + `GET /secret/METRICOOL_TOKEN` |
+| `gravitas-data-manager` | Apify + `METRICOOL_TOKEN`; Meta account discovery | `scripts/apify-key.mjs` + `GET /secret/METRICOOL_TOKEN` + `GET /pages` |
+| `pitch-competitor-research` | Apify + `METRICOOL_TOKEN` | `scripts/apify-key.mjs` + `GET /secret/METRICOOL_TOKEN` |
 | `fb-ig-engagement-xlsx` | Per-page Meta reads | `GET /pages` → `GET /ig/media?ig_account_id=<id>` or `GET /debug?page_id=<id>` |
 
 > **Note:** `intel-ig-manager` and the old `gravitas-data-manager` have been merged
@@ -212,6 +212,24 @@ The agent uses this table to know which secret to fetch when a skill loads:
 > endpoints. It still does not expose a generic user token, and it will not guess a
 > page for you — but every page is reachable by naming it, so "multi-page" is no
 > longer a blocker for content reads. Ads remain the exception (see below).
+
+---
+
+## Apify: several accounts, spent in order
+
+The gateway holds more than one Apify account, and `/secrets` lists them in the
+order to spend them: `APIFY_API_KEY` first, then `APIFY_API_KEY_2`, then
+`APIFY_API_KEY_3`. Do not fetch `APIFY_API_KEY` by hand. Run the picker, which
+checks each account's monthly cap and returns the first with credit left:
+
+```bash
+node <plugin root>/scripts/apify-key.mjs --status   # every balance, no tokens; safe to read
+export APIFY_API_KEY="$(node <plugin root>/scripts/apify-key.mjs)"   # the token; never read it
+```
+
+It names the account it chose on stderr and exits 1 when every account is out.
+If a run fails partway with a monthly-limit error, run the picker again: the
+exhausted account now fails the check and the next one comes back.
 
 ---
 
@@ -289,7 +307,7 @@ environment variables:
   --login`, then export
   `INSTALOADER_SESSION=~/.config/instaloader/session-<your_username>`.
   The primary skill that uses Instaloader is `gravitas-data-manager`.
-  Fallback: Apify (uses shared `APIFY_API_KEY` from gateway).
+  Fallback: Apify, via `scripts/apify-key.mjs` (see **Apify: several accounts** above).
 
 ---
 

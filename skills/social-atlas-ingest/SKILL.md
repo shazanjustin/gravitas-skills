@@ -94,14 +94,22 @@ and `social-atlas-health` before backfilling by hand.
 A deep backfill (wider Apify windows) is `{"deep": true}`; `{"forceApify": true}` runs the
 Apify steps on a non-Monday.
 
-## Apify accounts (primary + fallback)
+## Apify accounts (primary + fallbacks)
 
-Both Apify accounts are FREE plan, $5/month each, so the primary runs dry mid-cycle.
+Four accounts, tried in this order (all Supabase edge-function secrets, set 2026-09-23 to
+match the gateway's `APIFY_API_KEY`, `_2`, `_3`):
+
+| Secret | Label | Account | Plan |
+|---|---|---|---|
+| `APIFY_TOKEN` | primary | gravitas_digital | STARTER, $29 cap |
+| `APIFY_TOKEN_2` | fallback-1 | silvery_pigeonpea | FREE, $5 |
+| `APIFY_TOKEN_3` | fallback-2 | halilintar | STARTER, $29 cap |
+| `APIFY_TOKEN_FALLBACK` | fallback-3 | older free backup | FREE, $5 |
+
 All Apify callers (`apify-ingest`, `apify-comments-ingest`, `apify-dataset-import`,
-`api-credits`) share `_shared/apify.ts`, which reads `APIFY_TOKEN` then
-`APIFY_TOKEN_FALLBACK` (both Supabase edge-function secrets) and retries the next account **only** on a credit-exhaustion error — a bad actor
+`api-credits`) share `_shared/apify.ts`, which walks that list and retries the next account **only** on a credit-exhaustion error — a bad actor
 input or bad token still fails on the first account instead of burning the backup. The
-success response carries `apifyAccount: "primary" | "fallback-1"` so you can see who paid.
+success response carries `apifyAccount: "primary" | "fallback-1" | ...` so you can see who paid.
 
 Apify signals exhaustion with two different shapes; both are matched:
 - `not-enough-usage-to-run-paid-actor` - "you will exceed your remaining usage of $X"

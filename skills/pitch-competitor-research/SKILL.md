@@ -38,9 +38,10 @@ export GRAVITAS_GATEWAY_URL="${GRAVITAS_GATEWAY_URL:-https://gateway.shazan.me}"
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
   "$GRAVITAS_GATEWAY_URL/secret/METRICOOL_TOKEN"
 
-# Apify token (IG/TT scraping fallback)
-curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
-  "$GRAVITAS_GATEWAY_URL/secret/APIFY_API_KEY"
+# Apify token (IG/TT scraping fallback). Never fetch APIFY_API_KEY directly: the gateway
+# holds several accounts in spend order (APIFY_API_KEY, _2, _3), and this
+# returns the first with credit left, naming it on stderr. Exits 1 when all are out.
+export APIFY_API_KEY="$(node <plugin root>/scripts/apify-key.mjs)"
 
 # Supabase (Intel App database)
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \

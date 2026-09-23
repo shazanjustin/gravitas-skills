@@ -35,9 +35,10 @@ export GRAVITAS_GATEWAY_URL="${GRAVITAS_GATEWAY_URL:-https://gateway.shazan.me}"
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
   "$GRAVITAS_GATEWAY_URL/secret/SUPABASE_SERVICE_ROLE_KEY"
 
-# Apify token (FB/IG scraping fallback)
-curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
-  "$GRAVITAS_GATEWAY_URL/secret/APIFY_API_KEY"
+# Apify token (FB/IG scraping fallback). Never fetch APIFY_API_KEY directly: the gateway
+# holds several accounts in spend order (APIFY_API_KEY, _2, _3), and this
+# returns the first with credit left, naming it on stderr. Exits 1 when all are out.
+export APIFY_API_KEY="$(node <plugin root>/scripts/apify-key.mjs)"
 
 # Metricool token (TikTok analytics — Own Data path)
 curl -s -H "x-api-key: $GRAVITAS_GATEWAY_KEY" \
@@ -50,7 +51,7 @@ Export fetched values as environment variables so the Python scripts pick them u
 ```bash
 export SUPABASE_URL="https://kzobygrjohvbuxiljbgk.supabase.co"
 export SUPABASE_SERVICE_ROLE_KEY="<from gateway>"
-export APIFY_API_KEY="<from gateway>"
+export APIFY_API_KEY="$(node <plugin root>/scripts/apify-key.mjs)"
 ```
 
 **Local-only credentials** (in `gravitas-data-manager/.env`, never committed):
@@ -263,7 +264,7 @@ How should we pull Instagram data?
    • More reliable, fewer rate limits
    • Better for bulk/large scrapes
    • Drawback: costs money after free credit runs out
-   • Uses shared APIFY_API_KEY from gateway
+   • Uses the first Apify account with credit left (scripts/apify-key.mjs)
 ```
 
 Wait for the user's choice. Default to Instaloader for small scrapes, suggest
@@ -305,7 +306,7 @@ Does NOT capture: reach, saves, shares, impressions.
 
 **Instagram via Apify:**
 
-Use the Intel App `apify-ingest` path with the `APIFY_API_KEY` from gateway.
+Use the Intel App `apify-ingest` path with the token from `node <plugin root>/scripts/apify-key.mjs`, which moves on to the next gateway account when one runs out of credit.
 Configure platform-specific actor input. Normalize into `competitor_posts`.
 
 **Facebook via Apify:**

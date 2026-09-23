@@ -120,13 +120,18 @@ def scrape_metricool(platform: str, handle: str, from_date: str, to_date: str) -
 
 
 def scrape_apify(platform: str, handle: str) -> dict:
-    """Scrape via Apify using gateway API key."""
-    try:
-        apify_key = get_gateway_secret("APIFY_API_KEY")
-    except Exception:
-        apify_key = os.environ.get("APIFY_API_KEY", "")
+    """Scrape via Apify, on the first gateway account with credit left."""
+    apify_key = os.environ.get("APIFY_API_KEY", "").strip()
     if not apify_key:
-        raise RuntimeError("APIFY_API_KEY not available from gateway or environment")
+        # scripts/apify-key.mjs walks APIFY_API_KEY, _2, _3 in spend order and
+        # returns the first one still under its monthly cap.
+        picker = Path(__file__).resolve().parents[3] / "scripts" / "apify-key.mjs"
+        r = subprocess.run(["node", str(picker)], capture_output=True, text=True)
+        if r.stderr.strip():
+            print(r.stderr.strip(), file=sys.stderr)
+        apify_key = r.stdout.strip() if r.returncode == 0 else ""
+    if not apify_key:
+        raise RuntimeError("No Apify account with credit left (see scripts/apify-key.mjs --status)")
 
     return {
         "platform": platform,
