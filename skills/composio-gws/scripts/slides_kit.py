@@ -214,6 +214,40 @@ def walk(elements):
             yield from walk(e["elementGroup"]["children"])
 
 
+def _text(e):
+    return "".join(t.get("textRun", {}).get("content", "")
+                   for t in e.get("shape", {}).get("text", {}).get("textElements", []))
+
+
+def find(page, text=None, fill=None, kind=None, exact=False):
+    """Elements on one slide (from c.page_get) that match every filter given.
+
+    text: case-insensitive substring of the shape's text, or an exact match with exact=True.
+    fill: "#RRGGBB" solid background fill, compared at 8-bit precision.
+    kind: a shapeType such as "RECTANGLE" or "TEXT_BOX", or "table" / "image".
+    Replaces dumping every shape and guessing ids before an in-place edit:
+        bars = find(c.page_get(pid, "mgcs05"), fill="#A8DCC0")
+    """
+    want = rgb(fill) if fill else None
+    out = []
+    for e in walk(page.get("pageElements", [])):
+        if kind:
+            k = "table" if "table" in e else "image" if "image" in e else e.get("shape", {}).get("shapeType")
+            if k != kind:
+                continue
+        if text is not None:
+            t = _text(e).strip()
+            if (t != text) if exact else (text.lower() not in t.lower()):
+                continue
+        if want:
+            got = (e.get("shape", {}).get("shapeProperties", {}).get("shapeBackgroundFill", {})
+                   .get("solidFill", {}).get("color", {}).get("rgbColor"))
+            if got is None or any(round(got.get(ch, 0) * 255) != round(want[ch] * 255) for ch in ("red", "green", "blue")):
+                continue
+        out.append(e)
+    return out
+
+
 class CompactTables:
     """Real tables with exact row heights, made by duplicating a compact table the deck already has.
 
@@ -319,7 +353,7 @@ def find_compact_table(deck, max_row_h_in=0.14):
 def contact_sheet(c, pid, slide_ids, path, per_row=2, width=960):
     """Render slide thumbnails into one image so a whole deck can be checked at a glance. Needs Pillow."""
     from PIL import Image, ImageDraw
-    order = [s["objectId"] for s in c.deck_get(pid)["slides"]]
+    order = c.deck_outline(pid)
     res = c.parallel([("GOOGLESLIDES_PRESENTATIONS_PAGES_GET_THUMBNAIL", {"presentationId": pid, "pageObjectId": sid, "thumbnailProperties": {"thumbnailSize": "LARGE"}})
                       for sid in slide_ids])
     ims = []

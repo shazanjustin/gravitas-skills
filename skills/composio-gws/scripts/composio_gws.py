@@ -55,6 +55,9 @@ def _load_env():
     return out
 
 
+_GATEWAY_KEY = []
+
+
 def _gateway_key():
     """The Gravitas Gateway key, from the environment or the OS credential store.
 
@@ -64,6 +67,12 @@ def _gateway_key():
     key = os.environ.get("GRAVITAS_GATEWAY_KEY", "").strip()
     if key:
         return key
+    if not _GATEWAY_KEY:
+        _GATEWAY_KEY.append(_gateway_key_from_store())
+    return _GATEWAY_KEY[0]
+
+
+def _gateway_key_from_store():
     getter = (pathlib.Path(__file__).resolve().parents[3] / "scripts" / "get-key.mjs")
     if not getter.exists():
         return None
@@ -277,8 +286,45 @@ class Composio:
         r = self.execute("GOOGLESLIDES_PRESENTATIONS_CREATE", {"title": title})
         return r.get("presentationId") or r.get("presentation_id") or r
 
-    def deck_get(self, pid):
-        return self.execute("GOOGLESLIDES_PRESENTATIONS_GET", {"presentationId": pid})
+    def deck_get(self, pid, fields=None):
+        """The whole deck: 3-5s and ~1.6MB for a 28-slide deck. For one slide use
+        page_get(); for ids and order use deck_outline(); or pass a Slides API
+        field mask, e.g. fields="slides(objectId,pageElements.objectId)"."""
+        args = {"presentationId": pid}
+        if fields:
+            args["fields"] = fields
+        return self.execute("GOOGLESLIDES_PRESENTATIONS_GET", args)
+
+    def deck_outline(self, pid):
+        """Slide object ids in deck order. ~1s and ~1KB instead of the full deck."""
+        return [s["objectId"] for s in self.deck_get(pid, "slides.objectId").get("slides", [])]
+
+    def page_get(self, pid, slide_id):
+        """One slide (objectId, pageElements, ...). ~0.9s and ~100KB: 3-5x faster
+        than pulling the whole deck to edit one slide."""
+        return self.execute("GOOGLESLIDES_PRESENTATIONS_PAGES_GET",
+                            {"presentationId": pid, "pageObjectId": slide_id})
+
+    def thumbs(self, pid, slide_ids, out_dir=".", size="LARGE", prefix=""):
+        """Render slides to <out_dir>/<prefix><slide_id>.png in parallel and return
+        the paths in order. Open them and look before calling a deck done."""
+        if isinstance(slide_ids, str):
+            slide_ids = [slide_ids]
+        os.makedirs(out_dir, exist_ok=True)
+        res = self.parallel([("GOOGLESLIDES_PRESENTATIONS_PAGES_GET_THUMBNAIL",
+                              {"presentationId": pid, "pageObjectId": sid,
+                               "thumbnailProperties": {"thumbnailSize": size}})
+                             for sid in slide_ids])
+
+        def fetch(pair):
+            sid, r = pair
+            url = r.get("contentUrl") or r.get("response_data", {}).get("contentUrl")
+            path = os.path.join(out_dir, "%s%s.png" % (prefix, sid))
+            with urllib.request.urlopen(url, timeout=60) as resp, open(path, "wb") as f:
+                f.write(resp.read())
+            return path
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            return list(ex.map(fetch, zip(slide_ids, res)))
 
     def deck_batch(self, pid, requests, chunk=60):
         """THE speed lever. `requests` is a list of raw Google Slides API request
@@ -323,13 +369,20 @@ class Composio:
         """Call a Google API endpoint directly with the connected account's auth.
 
         For anything a Composio tool does not expose, such as supportsAllDrives."""
-        conn = http.client.HTTPSConnection(HOST, timeout=self.timeout, context=ssl.create_default_context())
         payload = {"endpoint": url, "method": method, "connected_account_id": self.connected_account(toolkit)}
         if body is not None:
             payload["body"] = body
-        conn.request("POST", "/api/v3/tools/execute/proxy", body=json.dumps(payload),
-                     headers={"x-api-key": self.key, "Content-Type": "application/json"})
-        resp = conn.getresponse(); raw = resp.read().decode("utf-8", "replace")
+        headers = {"x-api-key": self.key, "Content-Type": "application/json", "Connection": "keep-alive"}
+        for attempt in range(3):
+            try:
+                conn = self._conn()
+                conn.request("POST", "/api/v3/tools/execute/proxy", body=json.dumps(payload), headers=headers)
+                resp = conn.getresponse(); raw = resp.read().decode("utf-8", "replace")
+                break
+            except (http.client.HTTPException, OSError):
+                self._drop()
+                if attempt == 2:
+                    raise
         j = json.loads(raw)
         status = j.get("status", resp.status)
         if resp.status >= 400 or (isinstance(status, int) and status >= 400):

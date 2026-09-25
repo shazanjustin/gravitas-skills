@@ -36,7 +36,7 @@ import composio_gws as C
 c = C.Composio()
 ```
 
-## The four things that make it fast
+## The five things that make it fast
 
 1. **REST execute, not MCP.** Composio's `/api/v3/tools/execute/{TOOL}` returns
    plain JSON. The MCP endpoint wraps everything in JSON-RPC + SSE and measured
@@ -48,6 +48,40 @@ c = C.Composio()
    One-at-a-time would be ~14 minutes.
 4. **`c.parallel([(tool, args), ...])`** for independent calls (thumbnails,
    multi-sheet reads). Ordered results, 6 workers by default.
+5. **Read only what you need.** `deck_get()` pulls the whole deck: 3-5s and
+   1.6MB for a 36-slide deck (measured 2026-09-26), and every byte lands in
+   your context if you print it. For an in-place edit fetch one slide instead:
+
+   | Need | Call | Time, size |
+   |---|---|---|
+   | Slide ids in order | `c.deck_outline(pid)` | ~1s, 1KB |
+   | One slide's shapes | `c.page_get(pid, slide_id)` | ~0.9s, 100KB |
+   | Some fields of every slide | `c.deck_get(pid, fields="slides(objectId,pageElements.objectId)")` | depends on the mask |
+   | Everything | `c.deck_get(pid)` | 3-5s, 1.6MB |
+
+## Editing one slide in place
+
+When someone has hand-edited a deck, never rebuild it: change the shapes you
+need and leave the rest. Fetch the slide, find shapes with `find()` rather than
+dumping them all and guessing ids, send the edit, then look:
+
+```python
+from slides_kit import find
+pg = c.page_get(pid, "mgcs05")
+bars = [b for b in find(pg, fill="#A8DCC0", kind="RECTANGLE")   # by solid fill; a legend swatch
+        if b["transform"]["scaleX"] > 0.2]                       # shares it, so drop small ones
+label = find(pg, text="Meta traffic")[0]            # by text, case-insensitive substring
+ref = find(pg, fill="#4CC38A", kind="RECTANGLE")[0]["transform"]   # match another bar's length
+c.deck_batch(pid, [{"updatePageElementTransform": {"objectId": b["objectId"], "applyMode": "ABSOLUTE",
+                    "transform": {**b["transform"], "scaleX": ref["scaleX"], "translateX": ref["translateX"]}}} for b in bars])
+c.thumbs(pid, "mgcs05", "check")                    # -> ["check/mgcs05.png"]; open it
+```
+
+Check what `find()` returned before sending: legend swatches and chips share
+fills and words with the shapes you mean. Its filters are ANDed: `text` (add
+`exact=True` to match the whole text, which for a two-line box includes the
+newline), `fill` as `#RRGGBB`, and `kind` as a shapeType such as `RECTANGLE`
+or `TEXT_BOX`, or `table` / `image`.
 
 ## Hard-won gotchas
 
@@ -147,7 +181,7 @@ Coordinates are **EMU**: `IN = 914400`. A 16:9 slide is `W, H = 10*IN, 5.625*IN`
 shared) wipe the slides first rather than creating a new presentation:
 
 ```python
-old = [s["objectId"] for s in c.deck_get(pid).get("slides", [])]
+old = c.deck_outline(pid)
 c.deck_batch(pid, [{"deleteObject": {"objectId": o}} for o in old])
 ```
 
@@ -155,12 +189,10 @@ c.deck_batch(pid, [{"deleteObject": {"objectId": o}} for o in old])
 done.** Text boxes do not autofit, so overflow is silent:
 
 ```python
-jobs = [("GOOGLESLIDES_PRESENTATIONS_PAGES_GET_THUMBNAIL",
-         {"presentationId": pid, "pageObjectId": sid,
-          "thumbnailProperties": {"thumbnailSize": "LARGE"}}) for sid in ids]
-for sid, r in zip(ids, c.parallel(jobs)):
-    urllib.request.urlretrieve(r["contentUrl"], "slide_%s.png" % sid)
+paths = c.thumbs(pid, ids, "check")   # parallel; check/<slide_id>.png, in order
 ```
+
+`contact_sheet()` in `slides_kit` stitches them into one image for a whole-deck check.
 
 ## Slides that do not overlap
 
