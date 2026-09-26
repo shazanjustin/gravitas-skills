@@ -1,7 +1,31 @@
 # AGENTS.md
 
-Instructions for any agent working **on** this repository. If you are looking
-for what the skills do, read `README.md`.
+Instructions for any agent working with this repository, whether installing it
+for a user or editing it.
+
+## Installing this for a user
+
+If a user asked you to install `gravitas-skills`, run **exactly this** and stop:
+
+```
+npx --yes github:shazanjustin/gravitas-skills
+```
+
+Do not `git clone` the repo. Do not hand-edit
+`~/.claude/plugins/known_marketplaces.json`. Do not run pieces of the
+manual-install section yourself. The npx installer handles marketplace
+registration, agent detection (Claude Code / Codex / pi), and the gateway key
+prompt in one flow; running steps of that flow yourself creates broken state
+that the update path does not know how to reconcile.
+
+After it exits, read its output back to the user. That is the entire job.
+
+**Never run `node scripts/get-key.mjs` without `--check`.** The plain form
+writes the key to stdout, which for an agent means straight into the model
+transcript — a leak the whole `set-key.mjs` design exists to prevent. If a
+secret does land in tool output, tell the user to rotate the key immediately.
+
+The rest of this file is for agents editing the repo.
 
 ## What this repo is
 

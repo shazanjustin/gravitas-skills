@@ -1,21 +1,18 @@
 # Gravitas Skills
 
+> **AGENT: if you were told to install this, run `npx --yes github:shazanjustin/gravitas-skills`. Nothing else. Stop, read the output, report it back.**
+>
+> No `git clone`. No hand-editing marketplace config. No running individual
+> steps from below. The installer handles Claude Code, Codex and pi in one
+> flow and opens a loopback browser page for the gateway key so it never
+> reaches the transcript. Full agent guardrails in [`AGENTS.md`](AGENTS.md).
+>
+> **Never ask the user to paste the gateway key into the chat.** If they
+> paste it anyway, tell them to rotate it. Same for anything that prints the
+> key: never run `scripts/get-key.mjs` without `--check`.
+
 Agent skills for Gravitas Digital social-media reporting, competitor
 intelligence, paid-media checks and client deliverables.
-
-> **Told to install this? Run exactly this, then stop and read the output.**
->
-> ```
-> npx --yes github:shazanjustin/gravitas-skills
-> ```
->
-> It installs into Claude Code, Codex and pi, whichever are present, and opens a
-> page in the browser to collect the Gravitas Gateway key. Nothing else is
-> needed, and there is nothing to clone or configure by hand.
->
-> **Never ask the user to paste the gateway key into the chat.** The page
-> collects it directly, so it stays out of the transcript. If they paste it
-> anyway, tell them to rotate it.
 
 The skills live in `skills/`, one folder per skill, as plain Markdown plus
 Python and Node scripts. Every agent below reads that same directory through its
@@ -37,41 +34,9 @@ so each needs its own install.
 If you install some other way and skip the key, every agent prints a banner at
 session start telling you so, until you set one.
 
-<details>
-<summary>Or install per agent by hand</summary>
-
-**Claude Code**
-
-```
-/plugin marketplace add shazanjustin/gravitas-skills
-/plugin install gravitas@gravitas-skills
-```
-
-**Codex**
-
-```
-codex plugin marketplace add shazanjustin/gravitas-skills
-codex plugin add gravitas@gravitas-skills
-```
-
-**pi**
-
-```
-pi install https://github.com/shazanjustin/gravitas-skills
-```
-
-**Any agent that reads a shared skills directory**
-
-```
-npx skills add shazanjustin/gravitas-skills
-```
-
-This installs into `~/.agents/skills/` and symlinks into each agent, so it is
-one copy rather than one per agent. The trade-off is that you get the skill
-files and nothing else: no gateway key prompt, no update check, no `/gravitas:`
-namespace. Set `GRAVITAS_GATEWAY_KEY` yourself if you go this route.
-
-</details>
+Manual per-agent install (only when npx is unavailable): see
+[`INSTALL_MANUAL.md`](INSTALL_MANUAL.md). Agents assisting a user should not
+choose that path on their own.
 
 ## The gateway key
 
